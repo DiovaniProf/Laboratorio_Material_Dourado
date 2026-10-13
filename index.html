@@ -1,19 +1,31 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#07111f" />
-  <title>Projeto Educacional 7.0</title>
-  <link rel="stylesheet" href="./style.css" />
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-  <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#06101d">
+  <title>Projeto Educacional 2.0</title>
+
+  <link rel="stylesheet" href="style.css?v=7.0-material-layout-final">
+
+  <!-- Leitura local de planilhas XLS/XLSX e documentos DOCX -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/mammoth@1.13.0/mammoth.browser.min.js" defer></script>
+  <script src="script.js?v=7.0-material-layout-final" defer></script>
 </head>
+
 <body>
   <div id="appShell">
+
+    <!-- =====================================================
+         TOPO
+    ====================================================== -->
     <header id="topbar" class="topbar hidden">
-      <button class="brand-button" id="goHomeBtn" type="button"><span class="brand-dot"></span><span>PROJETO EDUCACIONAL <strong>7.0</strong></span></button>
+      <button id="goHomeBtn" class="brand-button" type="button">
+        <span class="brand-dot"></span>
+        <span>PROJETO EDUCACIONAL <strong>2.0</strong></span>
+      </button>
+
       <nav id="professorNav" class="topnav hidden">
         <button type="button" data-nav="home">Início</button>
         <button type="button" data-nav="classes">Minhas Turmas</button>
@@ -21,218 +33,768 @@
         <button type="button" data-nav="reports">Relatórios</button>
         <button type="button" data-nav="profile">Meu Perfil</button>
       </nav>
-      <nav id="studentNav" class="topnav hidden"><button type="button" data-student-nav="dashboard">Atividades</button></nav>
-      <div class="topbar-user"><span id="topbarUserName"></span><button id="logoutBtn" class="btn btn-small btn-outline" type="button">Sair</button></div>
+
+      <nav id="studentNav" class="topnav hidden">
+        <button type="button" data-student-nav="dashboard">Atividades</button>
+      </nav>
+
+      <div class="topbar-user">
+        <div class="user-chip">
+          <div id="topbarAvatar" class="user-avatar" aria-hidden="true">PE</div>
+          <div class="user-meta">
+            <small id="topbarRole">Professor</small>
+            <span id="topbarUserName"></span>
+          </div>
+        </div>
+        <button id="logoutBtn" class="btn btn-small btn-outline" type="button">Sair</button>
+      </div>
     </header>
 
     <main>
+      <!-- =====================================================
+           TELA INICIAL
+      ====================================================== -->
       <section id="screenLanding" class="screen active">
         <div class="landing-hero">
-          <div class="hero-badge">AMBIENTE ONLINE</div>
-          <h1>Projeto Educacional <span>7.0</span></h1>
-          <p>Professores organizam turmas, atividades e relatórios. Estudantes acessam suas atividades com acompanhamento online.</p>
+          <div class="hero-badge">AMBIENTE EDUCACIONAL</div>
+          <h1>Projeto Educacional <span>2.0</span></h1>
+          <p>
+            Professores organizam turmas, atividades e relatórios.
+            Estudantes acessam suas atividades em um ambiente visual e organizado.
+          </p>
         </div>
+
         <div class="access-grid">
-          <article class="access-card access-card-student"><div class="access-card-inner"><span class="access-kicker">ACESSO DO ALUNO</span><h2>Entrar como estudante</h2><p>Use o código da turma, seu número de chamada com dois algarismos e sua senha.</p><button class="btn btn-student" id="openStudentAccessBtn" type="button">ACESSAR COMO ALUNO</button></div></article>
-          <article class="access-card access-card-professor"><div class="access-card-inner"><span class="access-kicker">ACESSO DO PROFESSOR</span><h2>Entrar como professor</h2><p>Acesse suas turmas, bancos de atividades, relatórios e configurações.</p><button class="btn btn-professor" id="openProfessorAccessBtn" type="button">ACESSAR COMO PROFESSOR</button></div></article>
+          <article class="access-card access-card-student">
+            <div class="access-card-inner">
+              <span class="access-kicker">ACESSO DO ALUNO</span>
+              <h2>Entrar como estudante</h2>
+              <p>Use o código da turma, seu número de chamada com dois algarismos e sua senha.</p>
+              <button id="openStudentAccessBtn" class="btn btn-student" type="button">
+                ACESSAR COMO ALUNO
+              </button>
+            </div>
+          </article>
+
+          <article class="access-card access-card-professor">
+            <div class="access-card-inner">
+              <span class="access-kicker">ACESSO DO PROFESSOR</span>
+              <h2>Entrar como professor</h2>
+              <p>Acesse suas turmas, bancos de atividades, relatórios e configurações.</p>
+              <button id="openProfessorAccessBtn" class="btn btn-professor" type="button">
+                ACESSAR COMO PROFESSOR
+              </button>
+            </div>
+          </article>
         </div>
       </section>
 
+      <!-- =====================================================
+           PROFESSOR: ACESSO / CRIAR PERFIL
+      ====================================================== -->
       <section id="screenProfessorAuth" class="screen">
         <div class="auth-layout">
           <button class="back-link" type="button" data-back-landing>← Voltar</button>
+
           <div class="auth-panel auth-panel-professor">
-            <div class="auth-title"><span>PROFESSOR</span><h2>Acesso ao Projeto Educacional</h2></div>
-            <div class="auth-tabs"><button class="auth-tab active" type="button" data-prof-tab="login">Entrar</button><button class="auth-tab" type="button" data-prof-tab="register">Criar perfil</button></div>
+            <div class="auth-title">
+              <span>PROFESSOR</span>
+              <h2>Acesso ao Projeto Educacional</h2>
+            </div>
+
+            <div class="auth-tabs">
+              <button class="auth-tab active" type="button" data-prof-tab="login">Entrar</button>
+              <button class="auth-tab" type="button" data-prof-tab="register">Criar perfil</button>
+            </div>
+
             <form id="professorLoginForm" class="auth-form">
-              <label>Usuário<span class="animated-input animated-input-professor"><input id="profLoginUsername" autocomplete="username" required /></span></label>
-              <label>Senha<span class="password-field"><input id="profLoginPassword" type="password" autocomplete="current-password" required / class="password-input">
-                  <button
-                    class="password-toggle"
-                    type="button"
-                    data-password-toggle
-                    aria-label="Mostrar senha"
-                    title="Mostrar senha"
-                  >
-                    Mostrar
-                  </button></span></label>
+              <label>
+                Usuário
+                <input id="profLoginUsername" autocomplete="username" required>
+              </label>
+
+              <label>
+                Senha
+                <span class="password-field">
+                  <input id="profLoginPassword" type="password" autocomplete="current-password" required>
+                  <button class="password-toggle" type="button" data-password-toggle>Mostrar</button>
+                </span>
+              </label>
+
               <button class="btn btn-professor btn-full" type="submit">ENTRAR</button>
             </form>
+
             <form id="professorRegisterForm" class="auth-form hidden">
-              <label>Nome do professor<span class="animated-input animated-input-professor"><input id="profRegisterName" placeholder="Ex.: Diovani Grando" required /></span></label>
-              <label>Usuário<span class="animated-input animated-input-professor"><input id="profRegisterUsername" autocomplete="username" required /></span></label>
-              <label>Senha<span class="password-field"><input id="profRegisterPassword" type="password" minlength="8" autocomplete="new-password" required / class="password-input">
-                  <button
-                    class="password-toggle"
-                    type="button"
-                    data-password-toggle
-                    aria-label="Mostrar senha"
-                    title="Mostrar senha"
-                  >
-                    Mostrar
-                  </button></span></label>
-              <label>Confirmar senha<span class="password-field"><input id="profRegisterPassword2" type="password" minlength="8" autocomplete="new-password" required / class="password-input">
-                  <button
-                    class="password-toggle"
-                    type="button"
-                    data-password-toggle
-                    aria-label="Mostrar senha"
-                    title="Mostrar senha"
-                  >
-                    Mostrar
-                  </button></span></label>
-              <label>Chave geral para criar perfil de professor<span class="password-field"><input id="profRegisterMasterKey" type="password" required / class="password-input">
-                  <button
-                    class="password-toggle"
-                    type="button"
-                    data-password-toggle
-                    aria-label="Mostrar senha"
-                    title="Mostrar senha"
-                  >
-                    Mostrar
-                  </button></span></label>
+              <label>
+                Nome do professor
+                <input id="profRegisterName" placeholder="Ex.: Diovani Grando" required>
+              </label>
+
+              <label>
+                Usuário
+                <input id="profRegisterUsername" autocomplete="username" required>
+              </label>
+
+              <label>
+                Senha
+                <span class="password-field">
+                  <input id="profRegisterPassword" type="password" minlength="8" autocomplete="new-password" required>
+                  <button class="password-toggle" type="button" data-password-toggle>Mostrar</button>
+                </span>
+              </label>
+
+              <label>
+                Confirmar senha
+                <span class="password-field">
+                  <input id="profRegisterPassword2" type="password" minlength="8" autocomplete="new-password" required>
+                  <button class="password-toggle" type="button" data-password-toggle>Mostrar</button>
+                </span>
+              </label>
+
+              <label>
+                Chave geral para criar perfil de professor
+                <span class="password-field">
+                  <input id="profRegisterMasterKey" type="password" required>
+                  <button class="password-toggle" type="button" data-password-toggle>Mostrar</button>
+                </span>
+              </label>
+
               <button class="btn btn-professor btn-full" type="submit">CRIAR PERFIL</button>
             </form>
           </div>
         </div>
       </section>
 
+      <!-- =====================================================
+           ALUNO: ACESSO / PRIMEIRO ACESSO
+      ====================================================== -->
       <section id="screenStudentAuth" class="screen">
         <div class="auth-layout">
           <button class="back-link" type="button" data-back-landing>← Voltar</button>
+
           <div class="auth-panel auth-panel-student">
-            <div class="auth-title"><span>ALUNO</span><h2>Acesso às atividades</h2></div>
-            <div class="auth-tabs"><button class="auth-tab active" type="button" data-student-tab="login">Entrar</button><button class="auth-tab" type="button" data-student-tab="register">Primeiro acesso</button></div>
+            <div class="auth-title">
+              <span>ALUNO</span>
+              <h2>Acesso às atividades</h2>
+            </div>
+
+            <div class="auth-tabs">
+              <button class="auth-tab active" type="button" data-student-tab="login">Entrar</button>
+              <button class="auth-tab" type="button" data-student-tab="register">Primeiro acesso</button>
+            </div>
+
             <form id="studentLoginForm" class="auth-form">
-              <label>Código da turma<span class="animated-input animated-input-student"><input id="studentLoginClassCode" maxlength="30" required /></span></label>
-              <label>Número da chamada<span class="animated-input animated-input-student"><input id="studentLoginRoster" inputmode="numeric" maxlength="2" placeholder="Ex.: 03" required /></span></label>
-              <label>Senha<span class="password-field"><input id="studentLoginPassword" type="password" autocomplete="current-password" required / class="password-input">
-                  <button
-                    class="password-toggle"
-                    type="button"
-                    data-password-toggle
-                    aria-label="Mostrar senha"
-                    title="Mostrar senha"
-                  >
-                    Mostrar
-                  </button></span></label>
+              <label>
+                Código da turma
+                <input id="studentLoginClassCode" maxlength="30" required>
+              </label>
+
+              <label>
+                Número da chamada
+                <input id="studentLoginRoster" inputmode="numeric" maxlength="2" placeholder="Ex.: 03" required>
+              </label>
+
+              <label>
+                Senha
+                <span class="password-field">
+                  <input id="studentLoginPassword" type="password" autocomplete="current-password" required>
+                  <button class="password-toggle" type="button" data-password-toggle>Mostrar</button>
+                </span>
+              </label>
+
               <button class="btn btn-student btn-full" type="submit">ENTRAR</button>
             </form>
+
             <form id="studentRegisterForm" class="auth-form hidden">
-              <label>Código da turma<span class="animated-input animated-input-student"><input id="studentRegisterClassCode" maxlength="30" required /></span></label>
-              <label>Nome do aluno<span class="animated-input animated-input-student"><input id="studentRegisterName" placeholder="Ex.: 03. André Paulo" required /></span><small>Obrigatório: dois algarismos, ponto e nome. Ex.: 01. Ana, 09. Carlos, 10. Daniel.</small></label>
-              <label>Senha<span class="password-field"><input id="studentRegisterPassword" type="password" minlength="8" autocomplete="new-password" required / class="password-input">
-                  <button
-                    class="password-toggle"
-                    type="button"
-                    data-password-toggle
-                    aria-label="Mostrar senha"
-                    title="Mostrar senha"
-                  >
-                    Mostrar
-                  </button></span></label>
-              <label>Confirmar senha<span class="password-field"><input id="studentRegisterPassword2" type="password" minlength="8" autocomplete="new-password" required / class="password-input">
-                  <button
-                    class="password-toggle"
-                    type="button"
-                    data-password-toggle
-                    aria-label="Mostrar senha"
-                    title="Mostrar senha"
-                  >
-                    Mostrar
-                  </button></span></label>
+              <label>
+                Código da turma
+                <input id="studentRegisterClassCode" maxlength="30" required>
+              </label>
+
+              <label>
+                Nome do aluno
+                <input id="studentRegisterName" placeholder="Ex.: 03. André Paulo" required>
+                <small>Use obrigatoriamente dois algarismos, ponto e nome: 01. Ana, 09. Carlos, 10. Daniel.</small>
+              </label>
+
+              <label>
+                Senha
+                <span class="password-field">
+                  <input id="studentRegisterPassword" type="password" minlength="8" autocomplete="new-password" required>
+                  <button class="password-toggle" type="button" data-password-toggle>Mostrar</button>
+                </span>
+              </label>
+
+              <label>
+                Confirmar senha
+                <span class="password-field">
+                  <input id="studentRegisterPassword2" type="password" minlength="8" autocomplete="new-password" required>
+                  <button class="password-toggle" type="button" data-password-toggle>Mostrar</button>
+                </span>
+              </label>
+
               <button class="btn btn-student btn-full" type="submit">CRIAR ACESSO</button>
             </form>
           </div>
         </div>
       </section>
 
-      <section id="screenProfessorHome" class="screen"><div class="streaming-page"><div class="streaming-hero"><div><span class="eyebrow">PAINEL DO PROFESSOR</span><h1 id="professorWelcome">Olá, professor.</h1><p>Escolha uma área para organizar turmas, atividades e acompanhamento.</p></div></div><div id="streamingRows"></div></div></section>
-
-      <section id="screenWorkspace" class="screen">
-        <div class="workspace">
-          <div class="workspace-heading"><button id="workspaceBackBtn" class="back-link" type="button">← Voltar às capas</button><div><span class="eyebrow" id="workspaceEyebrow">ÁREA</span><h1 id="workspaceTitle">Área selecionada</h1><p id="workspaceSubtitle"></p></div></div>
-          <div class="workspace-tabs"><button class="workspace-tab active" data-work-tab="overview" type="button">Visão geral</button><button class="workspace-tab" data-work-tab="classes" type="button">Minhas Turmas</button><button class="workspace-tab" data-work-tab="activities" type="button">Banco de Atividades</button><button class="workspace-tab" data-work-tab="upload" type="button">Cadastrar / Upload</button><button class="workspace-tab" data-work-tab="reports" type="button">Participação</button></div>
-
-          <div id="workOverview" class="workspace-panel active"><div class="dashboard-cards">
-            <button class="dashboard-card" data-open-work="classes" type="button"><span>01</span><strong>Minhas Turmas</strong><small>Cadastrar, editar e selecionar níveis.</small></button>
-            <button class="dashboard-card" data-open-work="activities" type="button"><span>02</span><strong>Banco de Atividades</strong><small>Visualizar e liberar atividades para as turmas.</small></button>
-            <button class="dashboard-card" data-open-work="upload" type="button"><span>03</span><strong>Cadastrar / Upload</strong><small>Criar atividades ou importar CSV, XLSX e DOCX.</small></button>
-            <button class="dashboard-card" data-open-work="reports" type="button"><span>04</span><strong>Participação dos Alunos</strong><small>Acessos, tentativas, resolução e tempo registrado.</small></button>
-          </div></div>
-
-          <div id="workClasses" class="workspace-panel">
-            <div class="panel-grid panel-grid-classes">
-              <form id="classForm" class="panel-card form-card">
-                <div class="panel-title-row"><div><span class="eyebrow">TURMAS</span><h2 id="classFormTitle">Cadastrar turma</h2></div><button id="cancelClassEditBtn" type="button" class="btn btn-small btn-outline hidden">Cancelar edição</button></div>
-                <input id="classEditId" type="hidden" />
-                <div class="form-grid"><label>Nome da turma<input id="className" placeholder="Ex.: 9º A" required /></label><label>Série / etapa<input id="classGrade" placeholder="Ex.: 9º ano" /></label><label>Ano letivo<input id="classYear" type="number" min="2020" max="2100" /></label><label>Código de acesso<div class="inline-field"><input id="classCode" maxlength="30" required /><button id="generateClassCodeBtn" class="btn btn-small btn-outline" type="button">Gerar</button></div></label></div>
-                <fieldset class="levels-fieldset"><legend>Níveis liberados</legend><label><input type="checkbox" name="classLevel" value="N1" /> Nível 1 — 6º/7º ano</label><label><input type="checkbox" name="classLevel" value="N2" /> Nível 2 — 8º/9º ano</label><label><input type="checkbox" name="classLevel" value="N3" /> Nível 3 — 1º/2º EM</label><label><input type="checkbox" name="classLevel" value="ENEM" /> Nível ENEM — 3º EM</label></fieldset>
-                <label>Observações<textarea id="classDescription" rows="3"></textarea></label>
-                <button class="btn btn-primary btn-full" type="submit">SALVAR TURMA</button>
-              </form>
-              <div class="panel-card"><div class="panel-title-row"><div><span class="eyebrow">CADASTRADAS</span><h2>Minhas turmas</h2></div><button id="refreshClassesBtn" class="btn btn-small btn-outline" type="button">Atualizar</button></div><div id="classList" class="stack-list"></div></div>
+      <!-- =====================================================
+           PAINEL STREAMING DO PROFESSOR
+      ====================================================== -->
+      <section id="screenProfessorHome" class="screen">
+        <div class="streaming-page">
+          <section class="streaming-hero">
+            <div class="hero-copy">
+              <span class="eyebrow">PAINEL DO PROFESSOR</span>
+              <h1 id="professorWelcome">Olá, professor.</h1>
+              <p>Escolha uma área para organizar turmas, atividades e acompanhamento.</p>
             </div>
-          </div>
 
-          <div id="workActivities" class="workspace-panel"><div class="panel-card"><div class="panel-title-row"><div><span class="eyebrow">ATIVIDADES</span><h2>Banco de atividades</h2></div><button id="refreshActivitiesBtn" class="btn btn-small btn-outline" type="button">Atualizar</button></div><div id="activityList" class="activity-list"></div></div></div>
+            <div id="professorHeroStats" class="hero-stats" aria-label="Resumo do professor"></div>
+          </section>
 
-          <div id="workUpload" class="workspace-panel">
-            <div class="panel-grid">
-              <form id="activityForm" class="panel-card form-card"><span class="eyebrow">CADASTRO MANUAL</span><h2>Nova atividade</h2><div id="activityContextSummary" class="context-summary"></div>
-                <div class="form-grid"><label>Componente<select id="activityComponent"></select></label><label>Módulo<select id="activityModule"></select></label><label>Nível<select id="activityLevel"></select></label><label>Tipo<select id="activityType"></select></label><label>Correção<select id="activityCorrectionMode"><option value="automatic">Automática</option><option value="teacher">Professor</option><option value="mixed">Mista</option></select></label><label>Tema transversal<select id="activityTransversalTheme"><option value="">Nenhum</option></select></label></div>
-                <label>Título<input id="activityTitle" required /></label><label>Enunciado<textarea id="activityStatement" rows="4" required></textarea></label><label>Pergunta<textarea id="activityQuestion" rows="2"></textarea></label>
-                <div id="mathFields" class="math-fields hidden"><div class="form-grid"><label>Primeiro valor<input id="activityOperandA" type="number" step="any" /></label><label>Segundo valor<input id="activityOperandB" type="number" step="any" /></label><label>Unidade<input id="activityUnit" placeholder="Ex.: estudantes" /></label></div></div>
-                <label>Resposta correta<input id="activityAnswer" placeholder="Para correção automática" /></label><label>Liberar imediatamente para uma turma<select id="activityAssignClass"><option value="">Não liberar agora</option></select></label><button class="btn btn-primary btn-full" type="submit">CADASTRAR ATIVIDADE</button>
-              </form>
-              <div class="panel-card"><span class="eyebrow">IMPORTAÇÃO</span><h2>Upload de atividades</h2><p class="muted">Aceita CSV, XLSX e DOCX. A área aberta é usada como contexto principal.</p><label class="file-drop"><input id="activityFile" type="file" accept=".csv,.xlsx,.xls,.docx" /><span>Selecionar arquivo</span><small>CSV • XLSX • DOCX</small></label><label>Liberar atividades importadas para<select id="uploadAssignClass"><option value="">Somente banco do professor</option></select></label><button id="processActivityFileBtn" class="btn btn-primary btn-full" type="button">PROCESSAR ARQUIVO</button><div class="upload-help"><strong>Colunas recomendadas para CSV/XLSX</strong><code>titulo;enunciado;pergunta;resposta;nivel;tipo;unidade;operando_a;operando_b</code><strong>DOCX</strong><p>Use blocos iniciados por <b>ATIVIDADE 1</b>, com linhas: Título:, Enunciado:, Pergunta:, Resposta:, Nível: e Tipo:.</p></div><div id="uploadResult" class="upload-result"></div></div>
-            </div>
-          </div>
-
-          <div id="workReports" class="workspace-panel"><div class="panel-card"><div class="report-toolbar"><div><span class="eyebrow">PARTICIPAÇÃO DOS ALUNOS</span><h2>Relatório da turma</h2></div><div class="report-controls"><label>Turma<select id="reportClassSelect"></select></label><label>Ordenar por<select id="reportSort"><option value="roster">Número da chamada</option><option value="recent">Acessos mais recentes</option><option value="oldest">Acessos mais antigos</option><option value="duration">Maior tempo nos exercícios</option></select></label><button id="refreshReportBtn" class="btn btn-small btn-outline" type="button">Atualizar</button><button id="downloadReportBtn" class="btn btn-small btn-primary" type="button">Baixar relatório</button></div></div><div class="report-note"><strong>Ordem padrão:</strong> número da chamada (01, 02, 03...). O tempo apresentado corresponde ao tempo ativo registrado em cada exercício.</div><div id="reportTableWrap" class="report-table-wrap"></div></div></div>
+          <div id="streamingRows"></div>
         </div>
       </section>
 
-      <section id="screenProfessorProfile" class="screen"><div class="profile-page"><button id="profileBackBtn" class="back-link" type="button">← Voltar</button><div class="panel-grid"><div class="panel-card"><span class="eyebrow">MEU PERFIL</span><h2>Dados do professor</h2><div id="profileInfo" class="profile-info"></div></div><form id="changeKeyForm" class="panel-card form-card"><span class="eyebrow">SEGURANÇA</span><h2>Alterar chave de acesso</h2><p class="muted">Você precisa estar logado no seu perfil. Não é necessário informar a chave anterior.</p><label>Nova chave<span class="password-field"><input id="newAccessKey" type="password" minlength="8" required / class="password-input">
-                  <button
-                    class="password-toggle"
-                    type="button"
-                    data-password-toggle
-                    aria-label="Mostrar senha"
-                    title="Mostrar senha"
-                  >
-                    Mostrar
-                  </button></span></label><label>Confirmar nova chave<span class="password-field"><input id="confirmAccessKey" type="password" minlength="8" required / class="password-input">
-                  <button
-                    class="password-toggle"
-                    type="button"
-                    data-password-toggle
-                    aria-label="Mostrar senha"
-                    title="Mostrar senha"
-                  >
-                    Mostrar
-                  </button></span></label><button class="btn btn-professor btn-full" type="submit">SALVAR NOVA CHAVE</button><label class="switch-row"><input id="requireAdminKeyToggle" type="checkbox" /><span>Exigir minha chave pessoal para abrir a área administrativa</span></label></form></div></div></section>
+      <!-- =====================================================
+           ÁREA DE TRABALHO
+      ====================================================== -->
+      <section id="screenWorkspace" class="screen">
+        <div class="workspace">
+          <div class="workspace-heading">
+            <button id="workspaceBackBtn" class="back-link" type="button">← Voltar às capas</button>
 
-      <section id="screenStudentDashboard" class="screen"><div class="student-page"><div class="student-hero"><span class="eyebrow">ÁREA DO ALUNO</span><h1 id="studentWelcome">Minhas atividades</h1><p id="studentClassInfo"></p></div><div id="studentActivityGroups"></div></div></section>
+            <div>
+              <span class="eyebrow">ÁREA DE TRABALHO</span>
+              <h1 id="workspaceTitle">Área selecionada</h1>
+              <p id="workspaceSubtitle"></p>
+            </div>
+          </div>
 
-      <section id="screenStudentActivity" class="screen"><div class="student-activity-page"><button id="backToStudentDashboardBtn" class="back-link" type="button">← Voltar às atividades</button><div class="activity-header"><div><span id="studentActivityMeta" class="eyebrow"></span><h1 id="studentActivityTitle"></h1><p id="studentActivityStatement"></p><h3 id="studentActivityQuestion"></h3></div><div class="activity-timer-card"><span>Tempo ativo</span><strong id="activityTimerDisplay">00:00</strong><small>O tempo é salvo junto ao exercício.</small></div></div><div id="interactiveArea"></div><div class="answer-panel panel-card"><label>Rascunho<textarea id="studentScratch" rows="5" placeholder="Registre aqui sua estratégia, cálculo ou reflexão..."></textarea></label><div id="studentAnswerArea"></div><div id="studentAnswerFeedback" class="feedback-box hidden"></div></div></div></section>
+          <nav class="workspace-tabs">
+            <button class="workspace-tab active" data-work-tab="overview" type="button">Visão geral</button>
+            <button class="workspace-tab" data-work-tab="classes" type="button">Minhas Turmas</button>
+            <button class="workspace-tab" data-work-tab="activities" type="button">Banco de Atividades</button>
+            <button class="workspace-tab" data-work-tab="upload" type="button">Upload de Atividades</button>
+            <button class="workspace-tab" data-work-tab="reports" type="button">Participação</button>
+          </nav>
+
+          <!-- VISÃO GERAL -->
+          <div id="workOverview" class="workspace-panel active">
+            <div id="overviewMetrics" class="metric-grid"></div>
+
+            <div class="dashboard-cards">
+              <button class="dashboard-card" data-open-work="classes" type="button">
+                <span>01</span>
+                <strong>Minhas Turmas</strong>
+                <small>Cadastrar, editar e organizar turmas.</small>
+              </button>
+
+              <button class="dashboard-card" data-open-work="activities" type="button">
+                <span>02</span>
+                <strong>Banco de Atividades</strong>
+                <small>Visualizar e liberar atividades para as turmas.</small>
+              </button>
+
+              <button class="dashboard-card" data-open-work="upload" type="button">
+                <span>03</span>
+                <strong>Upload de Atividades</strong>
+                <small>Importar atividades por arquivo CSV.</small>
+              </button>
+
+              <button class="dashboard-card" data-open-work="reports" type="button">
+                <span>04</span>
+                <strong>Participação dos Alunos</strong>
+                <small>Acessos, tentativas, resolução e tempo registrado.</small>
+              </button>
+            </div>
+          </div>
+
+          <!-- TURMAS -->
+          <div id="workClasses" class="workspace-panel">
+            <div class="panel-grid panel-grid-classes">
+              <form id="classForm" class="panel-card form-card">
+                <div class="panel-title-row">
+                  <div>
+                    <span class="eyebrow">TURMAS</span>
+                    <h2 id="classFormTitle">Cadastrar turma</h2>
+                  </div>
+
+                  <button id="cancelClassEditBtn" class="btn btn-small btn-outline hidden" type="button">
+                    Cancelar edição
+                  </button>
+                </div>
+
+                <input id="classEditId" type="hidden">
+
+                <div class="form-grid">
+                  <label>
+                    Nome da turma
+                    <input id="className" placeholder="Ex.: 8A" required>
+                  </label>
+
+                  <label>
+                    Série / etapa
+                    <input id="classGrade" placeholder="Ex.: 9º ano">
+                  </label>
+
+                  <label>
+                    Ano letivo
+                    <input id="classYear" type="number" min="2020" max="2100">
+                  </label>
+
+                  <label>
+                    Código de acesso
+                    <div class="inline-field">
+                      <input id="classCode" maxlength="30" required>
+                      <button id="generateClassCodeBtn" class="btn btn-small btn-outline" type="button">Gerar</button>
+                    </div>
+                  </label>
+                </div>
+
+                <fieldset class="levels-fieldset">
+                  <legend>Níveis liberados</legend>
+
+                  <label><input type="checkbox" name="classLevel" value="N1"> Nível 1 — 6º/7º ano</label>
+                  <label><input type="checkbox" name="classLevel" value="N2"> Nível 2 — 8º/9º ano</label>
+                  <label><input type="checkbox" name="classLevel" value="N3"> Nível 3 — 1º/2º EM</label>
+                  <label><input type="checkbox" name="classLevel" value="ENEM"> Nível ENEM — 3º EM</label>
+                </fieldset>
+
+                <div class="class-observation-access">
+                  <div id="classObservationSummary" class="class-observation-summary">
+                    Nenhuma observação pedagógica detalhada registrada.
+                  </div>
+                </div>
+
+                <button class="btn btn-primary btn-full" type="submit">SALVAR TURMA</button>
+              </form>
+
+              <div class="panel-card">
+                <span class="eyebrow">CADASTRADAS</span>
+                <h2>Minhas turmas</h2>
+                <div id="classList" class="stack-list"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- BANCO DE ATIVIDADES -->
+          <div id="workActivities" class="workspace-panel">
+            <div class="panel-card full-panel">
+              <div class="section-heading">
+                <div>
+                  <span class="eyebrow">ATIVIDADES</span>
+                  <h2>Banco de atividades</h2>
+                </div>
+                <span id="activityResultCount" class="result-count">0 atividades</span>
+              </div>
+
+              <div class="activity-toolbar">
+                <label class="search-field">
+                  <span>Pesquisar</span>
+                  <input id="activitySearch" type="search" placeholder="Título, enunciado ou conteúdo...">
+                </label>
+
+                <label>
+                  <span>Nível</span>
+                  <select id="activityLevelFilter">
+                    <option value="">Todos os níveis</option>
+                    <option value="N1">Nível 1</option>
+                    <option value="N2">Nível 2</option>
+                    <option value="N3">Nível 3</option>
+                    <option value="ENEM">ENEM</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>Ordenar</span>
+                  <select id="activitySort">
+                    <option value="newest">Mais recentes</option>
+                    <option value="title">Título A–Z</option>
+                  </select>
+                </label>
+              </div>
+
+              <div id="activityList" class="activity-list"></div>
+            </div>
+          </div>
+
+          <!-- UPLOAD -->
+          <div id="workUpload" class="workspace-panel">
+            <div class="panel-card full-panel upload-only-card">
+              <span class="eyebrow">IMPORTAÇÃO</span>
+              <h2>Upload de atividades</h2>
+
+              <div id="activityContextSummary" class="context-summary"></div>
+
+              <p class="muted upload-description">
+                Importe seu banco de atividades em CSV, XLS, XLSX ou DOCX.
+                A plataforma analisa o arquivo automaticamente e mostra uma prévia antes de salvar.
+              </p>
+
+              <div class="upload-steps">
+                <div class="upload-step active">
+                  <span>1</span>
+                  <div>
+                    <strong>Escolha o arquivo</strong>
+                    <small>CSV, XLS, XLSX ou DOCX</small>
+                  </div>
+                </div>
+                <div class="upload-step">
+                  <span>2</span>
+                  <div>
+                    <strong>Escolha a turma</strong>
+                    <small>ou deixe apenas no banco</small>
+                  </div>
+                </div>
+                <div class="upload-step">
+                  <span>3</span>
+                  <div>
+                    <strong>Confirme</strong>
+                    <small>importe as atividades válidas</small>
+                  </div>
+                </div>
+              </div>
+
+              <label class="file-drop" id="activityFileDrop">
+                <input id="activityFile" type="file" accept=".csv,.xls,.xlsx,.docx">
+                <span id="activityFileDropTitle">Clique ou arraste o arquivo aqui</span>
+                <small id="activityFileDropMeta">CSV • XLS • XLSX • DOCX</small>
+              </label>
+
+              <label>
+                Liberar atividades importadas para
+                <select id="uploadAssignClass">
+                  <option value="">Somente banco do professor</option>
+                </select>
+              </label>
+
+              <div id="uploadPreview" class="upload-preview hidden"></div>
+
+              <div id="uploadConfirmActions" class="upload-confirm-actions hidden">
+                <button id="confirmActivityImportBtn" class="btn btn-success" type="button">
+                  CONFIRMAR ATIVIDADES
+                </button>
+
+                <button id="deleteActivityImportBtn" class="btn btn-danger-outline" type="button">
+                  EXCLUIR IMPORTAÇÃO
+                </button>
+              </div>
+
+              <button id="processActivityFileBtn" class="btn btn-outline btn-full hidden" type="button">
+                ANALISAR NOVAMENTE
+              </button>
+
+              <div class="upload-help compact-upload-help">
+                <strong>Estrutura recomendada</strong>
+                <code>titulo;enunciado;pergunta;resposta;nivel;tipo;unidade;operando_a;operando_b</code>
+                <small>
+                  Em XLS/XLSX use a primeira planilha. Em DOCX use uma tabela com esses títulos na primeira linha
+                  ou blocos identificados por “titulo:”, “enunciado:”, “pergunta:” e demais campos.
+                </small>
+              </div>
+
+              <div id="uploadResult" class="upload-result"></div>
+            </div>
+          </div>
+
+          <!-- RELATÓRIO -->
+          <div id="workReports" class="workspace-panel">
+            <div class="panel-card full-panel report-panel">
+              <div class="report-toolbar">
+                <div>
+                  <span class="eyebrow">PARTICIPAÇÃO DOS ALUNOS</span>
+                  <h2>Relatório da turma</h2>
+                </div>
+
+                <div class="report-controls">
+                  <label>
+                    Turma
+                    <select id="reportClassSelect">
+                      <option value="">Selecione uma turma</option>
+                    </select>
+                  </label>
+
+                  <label>
+                    Ordenar por
+                    <select id="reportSort">
+                      <option value="roster">Número da chamada</option>
+                      <option value="recent">Acessos mais recentes</option>
+                      <option value="oldest">Acessos mais antigos</option>
+                      <option value="duration">Maior tempo nos exercícios</option>
+                    </select>
+                  </label>
+
+                  <button id="downloadReportBtn" class="btn btn-primary" type="button">
+                    Baixar relatório
+                  </button>
+                </div>
+              </div>
+
+              <div id="reportMetrics" class="metric-grid report-metrics"></div>
+
+              <div class="report-note">
+                <strong>Ordem padrão:</strong> número da chamada (01, 02, 03...).
+              </div>
+
+              <div id="reportTableWrap" class="report-table-wrap"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =====================================================
+           MEU PERFIL
+      ====================================================== -->
+      <section id="screenProfessorProfile" class="screen">
+        <div class="profile-page">
+          <button id="profileBackBtn" class="back-link" type="button">← Voltar</button>
+
+          <div class="profile-grid">
+            <section class="panel-card profile-panel">
+              <span class="eyebrow">MEU PERFIL</span>
+              <h2>Dados do professor</h2>
+              <div id="profileInfo" class="profile-info"></div>
+            </section>
+
+            <form id="changeKeyForm" class="panel-card profile-panel form-card">
+              <span class="eyebrow">SEGURANÇA</span>
+              <h2>Alterar chave de acesso</h2>
+
+              <label>
+                Nova chave
+                <span class="password-field">
+                  <input id="newAccessKey" type="password" minlength="8" required>
+                  <button class="password-toggle" type="button" data-password-toggle>Mostrar</button>
+                </span>
+              </label>
+
+              <label>
+                Confirmar nova chave
+                <span class="password-field">
+                  <input id="confirmAccessKey" type="password" minlength="8" required>
+                  <button class="password-toggle" type="button" data-password-toggle>Mostrar</button>
+                </span>
+              </label>
+
+              <button class="btn btn-professor btn-full" type="submit">SALVAR NOVA CHAVE</button>
+
+              <label class="switch-row">
+                <input id="requireAdminKeyToggle" type="checkbox">
+                <span>Exigir minha chave pessoal para abrir a área administrativa</span>
+              </label>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <!-- =====================================================
+           ALUNO
+      ====================================================== -->
+      <section id="screenStudentDashboard" class="screen">
+        <div class="student-page">
+          <div class="student-hero">
+            <div>
+              <span class="eyebrow">ÁREA DO ALUNO</span>
+              <h1 id="studentWelcome">Minhas atividades</h1>
+              <p id="studentClassInfo"></p>
+            </div>
+
+            <div class="student-hero-badge">
+              <span>PROJETO EDUCACIONAL</span>
+              <strong>2.0</strong>
+            </div>
+          </div>
+
+          <div id="studentProgressSummary" class="student-progress-summary"></div>
+
+          <section class="student-catalog">
+            <div class="student-section-heading">
+              <div>
+                <span class="eyebrow">ÁREAS E COMPONENTES</span>
+                <h2>Escolha uma área para estudar</h2>
+                <p>As capas mostram todas as áreas disponíveis. As atividades liberadas pelo professor aparecem dentro de cada área.</p>
+              </div>
+            </div>
+
+            <div id="studentCatalogRows"></div>
+          </section>
+
+          <section id="studentComponentSection" class="student-component-section">
+            <div class="student-section-heading student-activity-heading">
+              <div>
+                <span class="eyebrow">ATIVIDADES LIBERADAS</span>
+                <h2 id="studentComponentTitle">Todas as atividades</h2>
+                <p id="studentComponentSubtitle">Atividades liberadas pelo professor para sua turma.</p>
+              </div>
+
+              <button id="clearStudentComponentFilter" class="btn btn-outline" type="button">
+                VER TODAS
+              </button>
+            </div>
+
+            <div id="studentActivityGroups"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="screenStudentActivity" class="screen">
+        <div class="student-activity-page">
+          <button id="backToStudentDashboardBtn" class="back-link" type="button">
+            ← Voltar às atividades
+          </button>
+
+          <div class="activity-header">
+            <div>
+              <span id="studentActivityMeta" class="eyebrow"></span>
+              <h1 id="studentActivityTitle"></h1>
+              <p id="studentActivityStatement"></p>
+              <h3 id="studentActivityQuestion"></h3>
+            </div>
+
+            <div class="activity-timer-card">
+              <span>Tempo ativo</span>
+              <strong id="activityTimerDisplay">00:00</strong>
+              <small>Tempo registrado no exercício.</small>
+            </div>
+          </div>
+
+          <div id="interactiveArea"></div>
+
+          <div class="answer-panel panel-card">
+            <label>
+              Rascunho
+              <textarea id="studentScratch" rows="5" placeholder="Registre aqui sua estratégia, cálculo ou reflexão..."></textarea>
+            </label>
+
+            <div id="studentAnswerArea"></div>
+            <div id="studentAnswerFeedback" class="feedback-box hidden"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =====================================================
+           LABORATÓRIO DO MATERIAL DOURADO
+      ====================================================== -->
+      <section id="screenMaterialLab" class="screen material-lab-screen">
+        <div class="material-lab-page">
+          <header class="material-lab-header">
+            <button id="backFromMaterialBtn" class="back-link material-back" type="button">
+              ← Voltar ao exercício
+            </button>
+
+            <div class="material-lab-title-row">
+              <div>
+                <span class="eyebrow">DIVISÃO COM MATERIAL DOURADO</span>
+                <h1 id="materialLabTitle">Representar, trocar e distribuir</h1>
+                <p id="materialLabStatement"></p>
+              </div>
+
+              <div class="material-operation-card">
+                <span>CONTA PRINCIPAL</span>
+                <strong id="materialLabOperation">—</strong>
+                <small id="materialLabQuestion"></small>
+              </div>
+            </div>
+          </header>
+
+          <div id="materialLabRoot"></div>
+        </div>
+      </section>
+
     </main>
 
-    <div id="adminGateModal" class="modal hidden" role="dialog" aria-modal="true"><div class="modal-card admin-gate-card"><span class="eyebrow">SEGURANÇA DO PROFESSOR</span><h2>Informe sua chave pessoal</h2><p>Esta chave protege a entrada da área administrativa.</p><form id="adminGateForm"><label>Chave de acesso<span class="password-field"><input id="adminGateKey" type="password" required autofocus / class="password-input">
-                  <button
-                    class="password-toggle"
-                    type="button"
-                    data-password-toggle
-                    aria-label="Mostrar senha"
-                    title="Mostrar senha"
-                  >
-                    Mostrar
-                  </button></span></label><button class="btn btn-professor btn-full" type="submit">LIBERAR ACESSO</button></form><button id="adminGateLogoutBtn" class="btn btn-outline btn-full" type="button">Sair da conta</button></div></div>
+    <!-- =====================================================
+         MODAIS
+    ====================================================== -->
+    <div id="adminGateModal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-card">
+        <span class="eyebrow">SEGURANÇA DO PROFESSOR</span>
+        <h2>Informe sua chave pessoal</h2>
 
-    <div id="studentDetailsModal" class="modal hidden" role="dialog" aria-modal="true"><div class="modal-card modal-card-wide"><div class="panel-title-row"><div><span class="eyebrow">DETALHES</span><h2 id="studentDetailsTitle">Aluno</h2></div><button id="closeStudentDetailsBtn" class="btn btn-small btn-outline" type="button">Fechar</button></div><div id="studentDetailsBody"></div></div></div>
+        <form id="adminGateForm" class="form-card">
+          <label>
+            Chave de acesso
+            <span class="password-field">
+              <input id="adminGateKey" type="password" required>
+              <button class="password-toggle" type="button" data-password-toggle>Mostrar</button>
+            </span>
+          </label>
+
+          <button class="btn btn-professor btn-full" type="submit">LIBERAR ACESSO</button>
+        </form>
+
+        <button id="adminGateLogoutBtn" class="btn btn-outline btn-full" type="button">Sair</button>
+      </div>
+    </div>
+
+    <div id="classObservationsModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="classObservationsTitle">
+      <div class="modal-card modal-card-wide class-observations-modal-card">
+        <div class="panel-title-row">
+          <div>
+            <span class="eyebrow">APOIO PEDAGÓGICO</span>
+            <h2 id="classObservationsTitle">Observações da turma</h2>
+            <p id="classObservationsSubtitle" class="modal-intro">Registre informações que ajudem a adaptar atividades e estratégias para a turma.</p>
+          </div>
+
+          <button id="closeClassObservationsBtn" class="btn btn-small btn-outline" type="button">Fechar</button>
+        </div>
+
+        <input id="classObservationsTargetId" type="hidden">
+
+        <div class="class-observations-grid">
+          <label>
+            Quantidade de alunos que precisam de adaptações
+            <input id="classSupportStudentCount" type="number" min="0" step="1" value="0">
+          </label>
+
+          <label>
+            Quantidade por necessidade ou laudo — sem nomes
+            <textarea id="classSupportProfile" rows="5" placeholder="Ex.: 2 alunos — necessidade de apoio na leitura; 1 aluno — necessidade de apoio na atenção e organização."></textarea>
+          </label>
+
+          <label>
+            Adaptações e estratégias recomendadas
+            <textarea id="classSupportStrategies" rows="6" placeholder="Ex.: enunciados mais curtos, apoio visual, tempo ampliado, material concreto, leitura mediada..."></textarea>
+          </label>
+
+          <label>
+            Recursos e apoios disponíveis
+            <textarea id="classSupportResources" rows="5" placeholder="Ex.: professor de apoio, sala de recursos, material impresso ampliado, recurso digital..."></textarea>
+          </label>
+        </div>
+
+        <div class="privacy-note">
+          Registre apenas informações pedagógicas necessárias para o planejamento. Evite nomes de estudantes e outros dados clínicos identificáveis.
+        </div>
+
+        <div class="modal-actions">
+          <button id="saveClassObservationsBtn" class="btn btn-gold" type="button">SALVAR OBSERVAÇÕES</button>
+          <button id="clearClassObservationsBtn" class="btn btn-outline" type="button">LIMPAR CAMPOS</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="studentDetailsModal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-card modal-card-wide">
+        <div class="panel-title-row">
+          <div>
+            <span class="eyebrow">DETALHES</span>
+            <h2 id="studentDetailsTitle">Aluno</h2>
+          </div>
+
+          <button id="closeStudentDetailsBtn" class="btn btn-small btn-outline" type="button">
+            Fechar
+          </button>
+        </div>
+
+        <div id="studentDetailsBody"></div>
+      </div>
+    </div>
 
     <div id="toast" class="toast hidden"></div>
   </div>
-  <script src="./script.js"></script>
 </body>
 </html>

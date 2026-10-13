@@ -1,782 +1,3986 @@
 /* ============================================================
-   PROJETO EDUCACIONAL 7.0
-   Compatível com o SQL 6.1 já executado no Supabase.
+   PROJETO EDUCACIONAL 7.0 — CONSOLIDADO
    ============================================================ */
 
-const SUPABASE_URL = "https://qtqojkvmztsglmniqkgt.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_gS10P9sP6dMYKH9iXublgQ_V5mamrpI";
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+const $ = (selector, root = document) => root.querySelector(selector);
+const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+
+const STORAGE_KEY = "projetoEducacional7";
+const SESSION_KEY = "projetoEducacional7Session";
+const MASTER_KEY = "MDplano32026";
 
 const state = {
-  session:null, role:null, professor:null, student:null, currentClass:null,
-  classes:[], areas:[], components:[], modules:[], levels:[], activityTypes:[], transversalThemes:[],
-  currentContext:null, currentActivity:null, currentClassActivity:null, currentDraft:{},
-  activeSeconds:0, timerHandle:null, timerHeartbeat:null, lastTick:null, lastInteraction:Date.now(),
-  reportRows:[], reportStudents:[], reportSubmissions:[], realtimeChannel:null
+  role:null,
+  professor:null,
+  student:null,
+  currentClass:null,
+  currentContext:null,
+  currentActivity:null,
+  activeSeconds:0,
+  timerHandle:null,
+  heartbeatHandle:null,
+  reportRows:[],
+  pendingImport:null,
+  studentContextSlug:null,
+  materialBoard:null,
+  classObservationDraft:null
 };
 
-const screens = ["screenLanding","screenProfessorAuth","screenStudentAuth","screenProfessorHome","screenWorkspace","screenProfessorProfile","screenStudentDashboard","screenStudentActivity"];
-const $ = (s,r=document)=>r.querySelector(s);
-const $$ = (s,r=document)=>[...r.querySelectorAll(s)];
-
-const STREAMING_ROWS = [
-  {title:"Matemática",items:[
-    {title:"Adição",image:"./adicao.jpg",subtitle:"Laboratório de Adição",area:"matematica",component:"matematica",module:"adicao",mode:"module"},
-    {title:"Subtração",image:"./subtracao.jpg",subtitle:"Laboratório de Subtração",area:"matematica",component:"matematica",module:"subtracao",mode:"module"},
-    {title:"Multiplicação",image:"./multiplicacao.jpg",subtitle:"Laboratório de Multiplicação",area:"matematica",component:"matematica",module:"multiplicacao",mode:"module"},
-    {title:"Divisão",image:"./divisao.jpg",subtitle:"Laboratório da Divisão",area:"matematica",component:"matematica",module:"divisao",mode:"module"},
-    {title:"Educação Financeira",image:"./educacao-financeira.jpg",subtitle:"Situações financeiras e porcentagem",area:"matematica",component:"matematica",module:"educacao-financeira",mode:"module"}
-  ]},
-  {title:"Áreas do Conhecimento",items:[
-    {title:"Linguagens",image:"./linguagens.jpg",subtitle:"Português, Literatura, Arte e Inglês",area:"linguagens",mode:"area"},
-    {title:"Ciências Humanas",image:"./ciencias-humanas.jpg",subtitle:"Filosofia, História, Geografia e Sociologia",area:"ciencias-humanas",mode:"area"},
-    {title:"Ciências da Natureza",image:"./ciencias-natureza.jpg",subtitle:"Biologia, Física e Química",area:"ciencias-da-natureza",mode:"area"},
-    {title:"Temas Transversais",image:"./temas-transversais.jpg",subtitle:"Integrações entre áreas e componentes",mode:"transversal"}
-  ]},
-  {title:"Educação, Tecnologia e Projeto Pessoal",items:[
-    {title:"Educação Digital / Computação",image:"./educacao-digital.jpg",subtitle:"Pensamento computacional, lógica e programação",area:"educacao-digital-computacao",mode:"area"},
-    {title:"Projeto de Vida",image:"./projeto-de-vida.jpg",subtitle:"Autoconhecimento, planejamento e mundo do trabalho",area:"projeto-de-vida",mode:"area"}
-  ]}
+const screens = [
+  "screenLanding",
+  "screenProfessorAuth",
+  "screenStudentAuth",
+  "screenProfessorHome",
+  "screenWorkspace",
+  "screenProfessorProfile",
+  "screenStudentDashboard",
+  "screenStudentActivity",
+  "screenMaterialLab"
 ];
 
-function showScreen(id){screens.forEach(x=>document.getElementById(x)?.classList.toggle("active",x===id));window.scrollTo({top:0,behavior:"smooth"});}
-function setTopbar(show,role=null){$("#topbar").classList.toggle("hidden",!show);$("#professorNav").classList.toggle("hidden",role!=="professor");$("#studentNav").classList.toggle("hidden",role!=="student");}
-function toast(message,type="info",timeout=3800){const el=$("#toast");el.textContent=message;el.className=`toast ${type}`;clearTimeout(toast._t);toast._t=setTimeout(()=>el.classList.add("hidden"),timeout);}
-function esc(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");}
-function normalizeClassCode(v){return String(v??"").trim().toUpperCase().replace(/\s+/g,"-").replace(/[^A-Z0-9_-]/g,"");}
-function parseStudentName(v){const raw=String(v??"").trim();const m=raw.match(/^(\d{2})\s*\.\s*(.+)$/u);if(!m)return{valid:false,message:"O nome do aluno deve começar com dois algarismos, ponto e nome. Ex.: 03. André Paulo."};const roster=Number(m[1]),plainName=m[2].replace(/\s+/g," ").trim();if(!plainName||plainName.length<2)return{valid:false,message:"Informe o nome do aluno após o número da chamada."};return{valid:true,roster,rosterText:String(roster).padStart(2,"0"),plainName,fullName:`${String(roster).padStart(2,"0")}. ${plainName}`};}
-function studentPlainName(name){const p=parseStudentName(name);return p.valid?p.plainName:String(name??"");}
-function formatDateTime(v){if(!v)return"—";try{return new Intl.DateTimeFormat("pt-BR",{dateStyle:"short",timeStyle:"short"}).format(new Date(v));}catch{return"—";}}
-function formatDuration(sec){sec=Math.max(0,Math.floor(Number(sec)||0));const h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60),s=sec%60;return h?`${h}h ${String(m).padStart(2,"0")}min ${String(s).padStart(2,"0")}s`:`${m}min ${String(s).padStart(2,"0")}s`;}
-function timerText(sec){sec=Math.max(0,Math.floor(Number(sec)||0));const h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60),s=sec%60;return h?`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`:`${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;}
-function b64Url(v){const bytes=new TextEncoder().encode(String(v));let bin="";bytes.forEach(b=>bin+=String.fromCharCode(b));return btoa(bin).replaceAll("+","-").replaceAll("/","_").replaceAll("=","");}
 /*
-  AUTENTICAÇÃO INTERNA 7.0
-  -----------------------
-  O usuário continua vendo somente USUÁRIO + SENHA.
-  O Supabase Auth exige um endereço de e-mail tecnicamente válido.
-
-  Para evitar o erro de domínios reservados ou sem DNS, novas contas usam
-  um identificador interno determinístico terminado em @gmail.com.
-  Como "Confirm Email" está DESATIVADO, nenhum e-mail de confirmação é enviado.
-
-  Os dois formatos anteriores permanecem SOMENTE como fallback de login
-  para tentativas antigas de cadastro.
+  NOMES EXATOS DAS IMAGENS NA RAIZ DO GITHUB:
+  adicao.jpg
+  subtracao.jpg
+  multiplicacao.jpg
+  divisao.jpg
+  educacao-financeira.jpg
+  linguagens.jpg
+  ciencias-humanas.jpg
+  ciencias-natureza.jpg
+  temas-transversais.jpg
+  educacao-digital.jpg
+  projeto-de-vida.jpg
 */
-function fnv1a64Token(value){
-  let hash = 0xcbf29ce484222325n;
-  const prime = 0x100000001b3n;
-  const normalized = String(value ?? "").trim().toLowerCase();
-  const bytes = new TextEncoder().encode(normalized);
+const STREAMING_ROWS = [
+  {
+    title:"Matemática",
+    items:[
+      {title:"Adição",image:"adicao.jpg",subtitle:"Laboratório de Adição",area:"Matemática",module:"Adição",slug:"adicao"},
+      {title:"Subtração",image:"subtracao.jpg",subtitle:"Laboratório de Subtração",area:"Matemática",module:"Subtração",slug:"subtracao"},
+      {title:"Multiplicação",image:"multiplicacao.jpg",subtitle:"Laboratório de Multiplicação",area:"Matemática",module:"Multiplicação",slug:"multiplicacao"},
+      {title:"Divisão",image:"divisao.jpg",subtitle:"Laboratório da Divisão",area:"Matemática",module:"Divisão",slug:"divisao"},
+      {title:"Educação Financeira",image:"educacao-financeira.jpg",subtitle:"Situações financeiras e porcentagem",area:"Matemática",module:"Educação Financeira",slug:"educacao-financeira"}
+    ]
+  },
+  {
+    title:"Áreas do Conhecimento",
+    items:[
+      {title:"Linguagens",image:"linguagens.jpg",subtitle:"Português, Literatura, Arte e Inglês",area:"Linguagens",slug:"linguagens"},
+      {title:"Ciências Humanas",image:"ciencias-humanas.jpg",subtitle:"Filosofia, História, Geografia e Sociologia",area:"Ciências Humanas",slug:"ciencias-humanas"},
+      {title:"Ciências da Natureza",image:"ciencias-natureza.jpg",subtitle:"Biologia, Física e Química",area:"Ciências da Natureza",slug:"ciencias-natureza"},
+      {title:"Temas Transversais",image:"temas-transversais.jpg",subtitle:"Integrações entre áreas e componentes",area:"Temas Transversais",slug:"temas-transversais"}
+    ]
+  },
+  {
+    title:"Educação, Tecnologia e Projeto Pessoal",
+    items:[
+      {title:"Educação Digital / Computação",image:"educacao-digital.jpg",subtitle:"Pensamento computacional, lógica e programação",area:"Educação Digital / Computação",slug:"educacao-digital"},
+      {title:"Projeto de Vida",image:"projeto-de-vida.jpg",subtitle:"Autoconhecimento, planejamento e mundo do trabalho",area:"Projeto de Vida",slug:"projeto-de-vida"}
+    ]
+  }
+];
 
-  for(const byte of bytes){
-    hash ^= BigInt(byte);
-    hash = BigInt.asUintN(64, hash * prime);
+/* ============================================================
+   DADOS LOCAIS
+   ============================================================ */
+function defaultData(){
+  return {
+    professors:[],
+    classes:[],
+    students:[],
+    activities:[],
+    assignments:[],
+    submissions:[]
+  };
+}
+
+function loadData(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? {...defaultData(),...JSON.parse(raw)} : defaultData();
+  }catch{
+    return defaultData();
+  }
+}
+
+function saveData(data){
+  localStorage.setItem(STORAGE_KEY,JSON.stringify(data));
+}
+
+function getSession(){
+  try{
+    return JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null");
+  }catch{
+    return null;
+  }
+}
+
+function setSession(value){
+  if(value){
+    sessionStorage.setItem(SESSION_KEY,JSON.stringify(value));
+  }else{
+    sessionStorage.removeItem(SESSION_KEY);
+  }
+}
+
+function uid(prefix="id"){
+  if(window.crypto?.randomUUID){
+    return `${prefix}_${crypto.randomUUID()}`;
+  }
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2,10)}`;
+}
+
+async function hashText(value){
+  if(window.crypto?.subtle){
+    const bytes = new TextEncoder().encode(String(value));
+    const hash = await crypto.subtle.digest("SHA-256",bytes);
+    return [...new Uint8Array(hash)].map(b => b.toString(16).padStart(2,"0")).join("");
+  }
+  return btoa(unescape(encodeURIComponent(String(value))));
+}
+
+/* ============================================================
+   UTILITÁRIOS
+   ============================================================ */
+function showScreen(id){
+  screens.forEach(screenId => {
+    const el = document.getElementById(screenId);
+    if(el) el.classList.toggle("active",screenId === id);
+  });
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+
+function setTopbar(show,role=null){
+  $("#topbar").classList.toggle("hidden",!show);
+  $("#professorNav").classList.toggle("hidden",role !== "professor");
+  $("#studentNav").classList.toggle("hidden",role !== "student");
+}
+
+function toast(message,type="info",timeout=4200){
+  const el = $("#toast");
+  el.textContent = message;
+  el.className = `toast ${type}`;
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => el.classList.add("hidden"),timeout);
+}
+
+function escapeHtml(value){
+  return String(value ?? "")
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
+
+function normalizeClassCode(value){
+  return String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g,"-")
+    .replace(/[^A-Z0-9_-]/g,"");
+}
+
+function parseStudentName(value){
+  const raw = String(value ?? "").trim();
+  const match = raw.match(/^(\d{2})\s*\.\s*(.+)$/u);
+
+  if(!match){
+    return {
+      valid:false,
+      message:"O nome do aluno deve começar com dois algarismos, ponto e nome. Ex.: 03. André Paulo."
+    };
   }
 
-  return hash.toString(16).padStart(16,"0");
+  const roster = Number(match[1]);
+  const plainName = match[2].replace(/\s+/g," ").trim();
+
+  if(!plainName || plainName.length < 2){
+    return {valid:false,message:"Informe o nome do aluno após o número da chamada."};
+  }
+
+  return {
+    valid:true,
+    roster,
+    rosterText:String(roster).padStart(2,"0"),
+    plainName,
+    fullName:`${String(roster).padStart(2,"0")}. ${plainName}`
+  };
 }
 
-const AUTH_INTERNAL_DOMAIN = "gmail.com";
-const AUTH_PREVIOUS_DOMAIN = "projetoeducacional.app";
-const AUTH_LEGACY_DOMAIN = "labdiv.example";
-
-function professorEmail(username){
-  return `pe7p.${fnv1a64Token(username)}@${AUTH_INTERNAL_DOMAIN}`;
+function makeRandomClassCode(){
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let result = "T-";
+  for(let i=0;i<6;i++){
+    result += chars[Math.floor(Math.random()*chars.length)];
+  }
+  return result;
 }
 
-function professorPreviousEmail(username){
-  return `p.${b64Url(String(username).trim())}@${AUTH_PREVIOUS_DOMAIN}`;
+function formatDateTime(value){
+  if(!value) return "—";
+  try{
+    return new Intl.DateTimeFormat("pt-BR",{
+      dateStyle:"short",
+      timeStyle:"short"
+    }).format(new Date(value));
+  }catch{
+    return "—";
+  }
 }
 
-function professorLegacyEmail(username){
-  return `p.${b64Url(String(username).trim())}@${AUTH_LEGACY_DOMAIN}`;
+function formatDuration(totalSeconds){
+  const seconds = Math.max(0,Math.floor(Number(totalSeconds)||0));
+  const h = Math.floor(seconds/3600);
+  const m = Math.floor((seconds%3600)/60);
+  const s = seconds%60;
+
+  if(h>0){
+    return `${h}h ${String(m).padStart(2,"0")}min ${String(s).padStart(2,"0")}s`;
+  }
+  return `${m}min ${String(s).padStart(2,"0")}s`;
 }
 
-function studentEmail(classCode, rosterText){
-  return `pe7a.${fnv1a64Token(normalizeClassCode(classCode))}.${String(rosterText).padStart(2,"0")}@${AUTH_INTERNAL_DOMAIN}`;
+function timerText(totalSeconds){
+  const seconds = Math.max(0,Math.floor(Number(totalSeconds)||0));
+  const h = Math.floor(seconds/3600);
+  const m = Math.floor((seconds%3600)/60);
+  const s = seconds%60;
+
+  if(h>0){
+    return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+  }
+  return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
 }
 
-function studentPreviousEmail(classCode, rosterText){
-  return `a.${b64Url(normalizeClassCode(classCode))}.${b64Url(rosterText)}@${AUTH_PREVIOUS_DOMAIN}`;
+function debounce(fn,delay){
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args),delay);
+  };
 }
 
-function studentLegacyEmail(classCode, rosterText){
-  return `a.${b64Url(normalizeClassCode(classCode))}.${b64Url(rosterText)}@${AUTH_LEGACY_DOMAIN}`;
+function initialsFromName(name){
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if(!parts.length) return "PE";
+  if(parts.length === 1) return parts[0].slice(0,2).toUpperCase();
+  return `${parts[0][0]}${parts.at(-1)[0]}`.toUpperCase();
 }
 
-function makeRandomClassCode(){const c="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";let out="T-";for(let i=0;i<6;i++)out+=c[Math.floor(Math.random()*c.length)];return out;}
-function getActiveSecondsFromDraft(d){return Number(d?._tracking?.activeSeconds||0);}
-function debounce(fn,ms){let t;return(...args)=>{clearTimeout(t);t=setTimeout(()=>fn(...args),ms);};}
-function operationFromModuleSlug(slug){return({adicao:"addition",subtracao:"subtraction",multiplicacao:"multiplication",divisao:"division"})[slug]||null;}
-function findArea(slug){return state.areas.find(x=>x.slug===slug)||null;} function findComponent(slug,areaId=null){return state.components.find(x=>x.slug===slug&&(!areaId||x.area_id===areaId))||null;} function findModule(slug,componentId=null){return state.modules.find(x=>x.slug===slug&&(!componentId||x.component_id===componentId))||null;}
+function setTopbarIdentity(name,roleLabel){
+  $("#topbarUserName").textContent = name || "";
+  $("#topbarAvatar").textContent = initialsFromName(name);
+  $("#topbarRole").textContent = roleLabel || "";
+}
+
+function setActiveTopNav(nav){
+  $$("[data-nav]").forEach(button => {
+    button.classList.toggle("active",button.dataset.nav === nav);
+  });
+
+  $$("[data-student-nav]").forEach(button => {
+    button.classList.toggle("active",nav === "student-dashboard");
+  });
+}
+
+function metricCard(label,value,detail="",tone="blue"){
+  return `
+    <article class="metric-card metric-${tone}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      ${detail ? `<small>${escapeHtml(detail)}</small>` : ""}
+    </article>
+  `;
+}
+
+function professorOwnedData(){
+  const data = loadData();
+  const classes = data.classes.filter(c => c.professorId === state.professor?.id);
+  const classIds = new Set(classes.map(c => c.id));
+  const activities = data.activities.filter(a => a.professorId === state.professor?.id);
+  const activityIds = new Set(activities.map(a => a.id));
+  const students = data.students.filter(s => classIds.has(s.classId));
+  const submissions = data.submissions.filter(s =>
+    classIds.has(s.classId) && activityIds.has(s.activityId)
+  );
+
+  return {data,classes,activities,students,submissions,classIds,activityIds};
+}
+
+function renderProfessorHeroStats(){
+  const host = $("#professorHeroStats");
+  if(!host || !state.professor) return;
+
+  const {classes,activities,students,submissions} = professorOwnedData();
+  const activeStudents = new Set(submissions.map(s => s.studentId)).size;
+
+  host.innerHTML = [
+    metricCard("Turmas",String(classes.length),"organizadas","blue"),
+    metricCard("Alunos",String(students.length),"cadastrados","green"),
+    metricCard("Atividades",String(activities.length),"no banco","gold"),
+    metricCard("Participaram",String(activeStudents),"com acesso registrado","violet")
+  ].join("");
+}
+
+function renderOverviewMetrics(){
+  const host = $("#overviewMetrics");
+  if(!host || !state.professor || !state.currentContext) return;
+
+  const {data,classes,students} = professorOwnedData();
+
+  const contextActivities = data.activities.filter(a =>
+    a.professorId === state.professor.id &&
+    a.contextSlug === state.currentContext.slug
+  );
+
+  const contextActivityIds = new Set(contextActivities.map(a => a.id));
+
+  const assignments = data.assignments.filter(a =>
+    contextActivityIds.has(a.activityId)
+  );
+
+  const submissions = data.submissions.filter(s =>
+    contextActivityIds.has(s.activityId)
+  );
+
+  const participatingStudents = new Set(submissions.map(s => s.studentId)).size;
+
+  host.innerHTML = [
+    metricCard("Turmas",String(classes.length),"disponíveis para esta área","blue"),
+    metricCard("Atividades",String(contextActivities.length),state.currentContext.title,"gold"),
+    metricCard("Liberações",String(assignments.length),"atividades atribuídas","violet"),
+    metricCard("Participação",String(participatingStudents),`de ${students.length} alunos cadastrados`,"green")
+  ].join("");
+}
+
+function emptyState(icon,title,text,actionLabel="",actionAttr=""){
+  return `
+    <div class="empty-state">
+      <div class="empty-icon" aria-hidden="true">${icon}</div>
+      <h3>${escapeHtml(title)}</h3>
+      <p>${escapeHtml(text)}</p>
+      ${actionLabel ? `<button class="btn btn-primary" type="button" ${actionAttr}>${escapeHtml(actionLabel)}</button>` : ""}
+    </div>
+  `;
+}
+
+function normalizeActivityRow(row){
+  const normalized = {};
+
+  Object.entries(row).forEach(([key,value]) => {
+    normalized[
+      String(key)
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g,"")
+        .replace(/\s+/g,"_")
+    ] = value;
+  });
+
+  return {
+    title:String(normalized.titulo || normalized.title || "").trim(),
+    statement:String(normalized.enunciado || normalized.statement || "").trim(),
+    question:String(normalized.pergunta || normalized.question || "").trim(),
+    answer:String(normalized.resposta || normalized.answer || "").trim(),
+    level:String(normalized.nivel || normalized.level || "").trim(),
+    type:String(normalized.tipo || normalized.type || "problem_situation").trim(),
+    operandA:normalized.operando_a ?? normalized.dividendo ?? "",
+    operandB:normalized.operando_b ?? normalized.divisor ?? "",
+    unit:String(normalized.unidade || normalized.unit || "").trim()
+  };
+}
 
 
 /* ============================================================
-   CONEXÃO RESILIENTE COM O SUPABASE - V7.0
-   ------------------------------------------------------------
-   O CodePen roda dentro de um ambiente de preview. Em alguns
-   navegadores o supabase-js pode retornar apenas "Failed to fetch"
-   antes mesmo de o RPC responder.
-
-   Para os RPCs críticos de cadastro, tentamos primeiro a REST API
-   do Supabase diretamente, usando APENAS a publishable key no modo
-   anônimo. Depois do login, usamos o access_token da sessão.
+   MOSTRAR / OCULTAR SENHAS
    ============================================================ */
+function setupPasswordToggles(){
+  $$("[data-password-toggle]").forEach(button => {
+    button.addEventListener("click",() => {
+      const field = button.closest(".password-field");
+      const input = field?.querySelector("input");
+      if(!input) return;
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 15000){
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-  try{
-    return await fetch(url, {
-      ...options,
-      mode: "cors",
-      cache: "no-store",
-      signal: controller.signal
+      const visible = input.type === "text";
+      input.type = visible ? "password" : "text";
+      button.textContent = visible ? "Mostrar" : "Ocultar";
+      button.setAttribute("aria-label",visible ? "Mostrar senha" : "Ocultar senha");
     });
-  } finally {
-    clearTimeout(timer);
-  }
+  });
 }
 
-async function directSupabaseRpc(functionName, args = {}, accessToken = null){
-  const headers = {
-    "apikey": SUPABASE_PUBLISHABLE_KEY,
-    "Content-Type": "application/json",
-    "Accept": "application/json"
-  };
-
-  /*
-    IMPORTANTE:
-    - Antes do login: NÃO colocamos a publishable key em Authorization.
-    - Depois do login: Authorization recebe o JWT real do usuário.
-  */
-  if(accessToken){
-    headers.Authorization = `Bearer ${accessToken}`;
-  }
-
-  let response;
-
-  try{
-    response = await fetchWithTimeout(
-      `${SUPABASE_URL}/rest/v1/rpc/${functionName}`,
-      {
-        method: "POST",
-        headers,
-        body: JSON.stringify(args)
-      },
-      15000
-    );
-  }catch(error){
-    const origin = window.location.origin;
-    const ambienteCodePen = /codepen|cdpn/i.test(
-      `${window.location.hostname} ${document.referrer}`
-    );
-
-    throw new Error(
-      `Não foi possível alcançar o Supabase pela REST API. ` +
-      `Origem atual: ${origin}. ` +
-      (ambienteCodePen
-        ? `O teste está rodando no preview do CodePen. `
-        : ``) +
-      `Erro de rede: ${error?.message || error}`
-    );
-  }
-
-  const raw = await response.text();
-  let data = null;
-
-  if(raw){
-    try{
-      data = JSON.parse(raw);
-    }catch{
-      data = raw;
-    }
-  }
-
-  if(!response.ok){
-    const message =
-      data?.message ||
-      data?.error_description ||
-      data?.hint ||
-      (typeof data === "string" ? data : "") ||
-      `HTTP ${response.status}`;
-
-    throw new Error(
-      `${functionName}: ${message} (HTTP ${response.status})`
-    );
-  }
-
-  return data;
-}
-
-async function resilientRpc(functionName, args = {}, accessToken = null){
-  /* 1º: REST direta, com cabeçalhos mínimos. */
-  try{
-    return await directSupabaseRpc(
-      functionName,
-      args,
-      accessToken
-    );
-  }catch(directError){
-    console.warn(
-      `REST direta falhou em ${functionName}:`,
-      directError
-    );
-
-    /* 2º: SDK como fallback. */
-    try{
-      const {data,error} = await sb.rpc(
-        functionName,
-        args
-      );
-
-      if(error) throw error;
-      return data;
-    }catch(sdkError){
-      console.error(
-        `SDK também falhou em ${functionName}:`,
-        sdkError
-      );
-
-      throw new Error(
-        `${directError.message} | Fallback SDK: ${sdkError?.message || sdkError}`
-      );
-    }
-  }
-}
-
-async function testSupabaseConnection(){
-  const tests = [];
-
-  try{
-    const response = await fetchWithTimeout(
-      `${SUPABASE_URL}/rest/v1/`,
-      {
-        method: "GET",
-        headers: {
-          "apikey": SUPABASE_PUBLISHABLE_KEY,
-          "Accept": "application/json"
-        }
-      },
-      10000
-    );
-
-    tests.push({
-      name: "REST",
-      ok: response.status >= 200 && response.status < 500,
-      status: response.status
-    });
-  }catch(error){
-    tests.push({
-      name: "REST",
-      ok: false,
-      error: error?.message || String(error)
-    });
-  }
-
-  return tests;
-}
-
-/* ---------- AUTENTICAÇÃO ---------- */
-async function initSession(){const{data}=await sb.auth.getSession();state.session=data.session||null;if(!state.session){state.role=null;setTopbar(false);showScreen("screenLanding");return;}await routeAuthenticatedUser();}
-async function routeAuthenticatedUser(){const user=state.session?.user;if(!user)return showScreen("screenLanding");
-  const{data:prof}=await sb.from("professors").select("*").eq("id",user.id).maybeSingle();
-  if(prof){state.role="professor";state.professor=prof;$("#topbarUserName").textContent=prof.name;setTopbar(true,"professor");await loadReferenceData();await loadClasses();const{data:settings,error}=await sb.rpc("get_my_security_settings");if(error){toast(error.message,"error");return showProfessorHome();}const row=Array.isArray(settings)?settings[0]:settings;if(row?.require_admin_key){$("#adminGateKey").value="";$("#adminGateModal").classList.remove("hidden");return;}return showProfessorHome();}
-  const{data:student}=await sb.from("students").select("*, classes(*)").eq("id",user.id).maybeSingle();
-  if(student){state.role="student";state.student=student;state.currentClass=student.classes||null;$("#topbarUserName").textContent=student.name;setTopbar(true,"student");return showStudentDashboard();}
-  toast("Perfil não encontrado para esta conta.","error");await logout();
-}
-async function logout(){stopActivityTimer(true);if(state.realtimeChannel){await sb.removeChannel(state.realtimeChannel);state.realtimeChannel=null;}await sb.auth.signOut();Object.assign(state,{session:null,role:null,professor:null,student:null,currentClass:null,classes:[],currentContext:null,currentActivity:null,currentClassActivity:null,currentDraft:{},reportRows:[],reportStudents:[],reportSubmissions:[]});setTopbar(false);showScreen("screenLanding");}
-async function professorLogin(e){
-  e.preventDefault();
-
-  const username=$("#profLoginUsername").value.trim();
-  const password=$("#profLoginPassword").value;
-
-  const candidateEmails=[
-    professorEmail(username),
-    professorPreviousEmail(username),
-    professorLegacyEmail(username)
-  ];
-
-  let result=null;
-
-  for(const email of candidateEmails){
-    const attempt=await sb.auth.signInWithPassword({email,password});
-
-    if(!attempt.error){
-      result=attempt;
-      break;
-    }
-
-    result=attempt;
-  }
-
-  if(result?.error){
-    console.error("Erro de login do professor:", result.error);
-    return toast(
-      `Não foi possível entrar (${result.error.code||"auth"}). Verifique usuário e senha.`,
-      "error",
-      7000
-    );
-  }
-
-  state.session=result.data.session;
-  await routeAuthenticatedUser();
-}
-
-async function professorRegister(e){
-  e.preventDefault();
-
-  const form = e.currentTarget;
-  const submitButton = form.querySelector('button[type="submit"]');
+/* ============================================================
+   AUTENTICAÇÃO LOCAL
+   ============================================================ */
+async function professorRegister(event){
+  event.preventDefault();
 
   const name = $("#profRegisterName").value.trim();
   const username = $("#profRegisterUsername").value.trim();
   const password = $("#profRegisterPassword").value;
   const password2 = $("#profRegisterPassword2").value;
-  const masterKey = $("#profRegisterMasterKey").value.trim();
+  const masterKey = $("#profRegisterMasterKey").value;
 
-  if(name.length < 2)
-    return toast("Informe o nome do professor.","error");
+  if(name.length < 2) return toast("Informe o nome do professor.","error");
+  if(username.length < 2) return toast("Informe um usuário válido.","error");
+  if(password.length < 8) return toast("A senha deve ter pelo menos 8 caracteres.","error");
+  if(password !== password2) return toast("As senhas não coincidem.","error");
+  if(masterKey !== MASTER_KEY) return toast("Chave geral inválida.","error");
 
-  if(username.length < 2)
-    return toast("Informe um usuário com pelo menos 2 caracteres.","error");
+  const data = loadData();
 
-  if(password.length < 8)
-    return toast("A senha precisa ter pelo menos 8 caracteres.","error");
+  if(data.professors.some(p => p.username.toLowerCase() === username.toLowerCase())){
+    return toast("Este usuário já está cadastrado.","error");
+  }
 
-  if(password !== password2)
-    return toast("As senhas não coincidem.","error");
+  const professor = {
+    id:uid("prof"),
+    name,
+    username,
+    passwordHash:await hashText(password),
+    accessKeyHash:await hashText(MASTER_KEY),
+    requireAdminKey:false,
+    createdAt:new Date().toISOString()
+  };
 
-  if(!masterKey)
-    return toast("Informe a chave geral para criar o perfil de professor.","error");
+  data.professors.push(professor);
+  saveData(data);
 
-  const originalText = submitButton.textContent;
-  submitButton.disabled = true;
-  submitButton.textContent = "CONECTANDO...";
+  state.role = "professor";
+  state.professor = professor;
+  setSession({role:"professor",userId:professor.id});
 
-  let etapa = "teste de conexão";
+  event.target.reset();
+  toast("Perfil do professor criado com sucesso.","success");
+  await enterProfessorArea();
+}
 
-  try{
-    /* --------------------------------------------------------
-       1. TESTE DA CONEXÃO
-       -------------------------------------------------------- */
-    const connection = await testSupabaseConnection();
-    const restTest = connection.find(item => item.name === "REST");
+async function professorLogin(event){
+  event.preventDefault();
 
-    if(!restTest?.ok){
-      throw new Error(
-        `O navegador não conseguiu alcançar a API do Supabase. ` +
-        `${restTest?.error || "REST indisponível"}. ` +
-        `Se estiver no CodePen, teste também no modo Full Page/Debug ` +
-        `ou no GitHub Pages.`
-      );
-    }
+  const username = $("#profLoginUsername").value.trim();
+  const passwordHash = await hashText($("#profLoginPassword").value);
+  const data = loadData();
 
-    /* --------------------------------------------------------
-       2. VALIDAR CHAVE GERAL
-       REST DIRETA PRIMEIRO; SDK SOMENTE COMO FALLBACK.
-       -------------------------------------------------------- */
-    etapa = "validação da chave geral";
-    submitButton.textContent = "VALIDANDO CHAVE...";
+  const professor = data.professors.find(p =>
+    p.username.toLowerCase() === username.toLowerCase() &&
+    p.passwordHash === passwordHash
+  );
 
-    const keyOk = await resilientRpc(
-      "verify_teacher_access",
-      { p_key: masterKey },
-      null
-    );
+  if(!professor){
+    return toast("Usuário ou senha inválidos.","error");
+  }
 
-    if(keyOk !== true){
-      throw new Error(
-        "Chave geral inválida. Confira a chave de cadastro do professor."
-      );
-    }
+  state.role = "professor";
+  state.professor = professor;
+  setSession({role:"professor",userId:professor.id});
 
-    /* --------------------------------------------------------
-       3. CRIAR / RECUPERAR AUTENTICAÇÃO
-       -------------------------------------------------------- */
-    etapa = "criação da autenticação";
-    submitButton.textContent = "CRIANDO ACESSO...";
+  await enterProfessorArea();
+}
 
-    const email = professorEmail(username);
-    let authData = null;
+async function studentRegister(event){
+  event.preventDefault();
 
-    let signUpResult;
+  const classCode = normalizeClassCode($("#studentRegisterClassCode").value);
+  const parsed = parseStudentName($("#studentRegisterName").value);
+  const password = $("#studentRegisterPassword").value;
+  const password2 = $("#studentRegisterPassword2").value;
 
-    try{
-      signUpResult = await sb.auth.signUp({
-        email,
-        password,
-        options:{
-          data:{
-            app_role:"professor",
-            app_username:username
-          }
-        }
-      });
-    }catch(fetchError){
-      throw new Error(
-        `O Supabase Auth não respondeu: ${fetchError?.message || fetchError}`
-      );
-    }
+  if(!parsed.valid) return toast(parsed.message,"error");
+  if(password.length < 8) return toast("A senha deve ter pelo menos 8 caracteres.","error");
+  if(password !== password2) return toast("As senhas não coincidem.","error");
 
-    const signUpData = signUpResult.data;
-    const signUpError = signUpResult.error;
+  const data = loadData();
+  const classItem = data.classes.find(c => c.code === classCode);
 
-    if(signUpError){
-      console.error(
-        "Erro Supabase Auth ao criar professor:",
-        signUpError
-      );
+  if(!classItem) return toast("Código de turma não encontrado.","error");
 
-      const duplicateCodes = [
-        "user_already_exists",
-        "email_exists"
-      ];
+  const duplicate = data.students.some(s =>
+    s.classId === classItem.id &&
+    s.roster === parsed.roster
+  );
 
-      const duplicateMessage =
-        String(signUpError.message || "")
-          .toLowerCase()
-          .includes("already");
+  if(duplicate){
+    return toast(`O número ${parsed.rosterText} já está cadastrado nesta turma.`,"error");
+  }
 
-      if(
-        duplicateCodes.includes(signUpError.code) ||
-        duplicateMessage
-      ){
-        const loginResult = await sb.auth.signInWithPassword({
-          email,
-          password
-        });
+  const student = {
+    id:uid("student"),
+    classId:classItem.id,
+    name:parsed.fullName,
+    plainName:parsed.plainName,
+    roster:parsed.roster,
+    rosterText:parsed.rosterText,
+    passwordHash:await hashText(password),
+    createdAt:new Date().toISOString(),
+    firstAccess:new Date().toISOString(),
+    lastAccess:new Date().toISOString()
+  };
 
-        if(loginResult.error){
-          throw new Error(
-            "Este usuário já possui uma conta. Use a senha cadastrada anteriormente ou escolha outro usuário."
-          );
-        }
+  data.students.push(student);
+  saveData(data);
 
-        authData = loginResult.data;
-      }else{
-        throw new Error(
-          `${signUpError.message} [${signUpError.code || "auth"}]`
-        );
-      }
-    }else if(!signUpData?.session){
-      const loginResult = await sb.auth.signInWithPassword({
-        email,
-        password
-      });
+  state.role = "student";
+  state.student = student;
+  state.currentClass = classItem;
+  setSession({role:"student",userId:student.id});
 
-      if(loginResult.error){
-        throw new Error(
-          "A conta foi criada, mas a sessão não iniciou. Confirme no Supabase se Confirm Email continua desativado."
-        );
-      }
+  event.target.reset();
+  toast("Acesso do aluno criado com sucesso.","success");
+  showStudentDashboard();
+}
 
-      authData = loginResult.data;
-    }else{
-      authData = signUpData;
-    }
+async function studentLogin(event){
+  event.preventDefault();
 
-    if(!authData?.session?.user?.id){
-      throw new Error(
-        "O Supabase Auth não devolveu uma sessão válida."
-      );
-    }
+  const classCode = normalizeClassCode($("#studentLoginClassCode").value);
+  const rosterText = String($("#studentLoginRoster").value).replace(/\D/g,"").padStart(2,"0");
+  const roster = Number(rosterText);
+  const passwordHash = await hashText($("#studentLoginPassword").value);
 
-    state.session = authData.session;
+  const data = loadData();
+  const classItem = data.classes.find(c => c.code === classCode);
 
-    /* Garante que o SDK reconheça explicitamente a sessão obtida. */
-    if(
-      authData.session.access_token &&
-      authData.session.refresh_token
-    ){
-      const setResult = await sb.auth.setSession({
-        access_token: authData.session.access_token,
-        refresh_token: authData.session.refresh_token
-      });
+  if(!classItem) return toast("Código de turma não encontrado.","error");
 
-      if(!setResult.error && setResult.data?.session){
-        state.session = setResult.data.session;
-      }
-    }
+  const student = data.students.find(s =>
+    s.classId === classItem.id &&
+    s.roster === roster &&
+    s.passwordHash === passwordHash
+  );
 
-    /* --------------------------------------------------------
-       4. VERIFICAR SE O PERFIL JÁ EXISTE
-       -------------------------------------------------------- */
-    etapa = "verificação do perfil";
-    submitButton.textContent = "VERIFICANDO PERFIL...";
+  if(!student) return toast("Número da chamada ou senha inválidos.","error");
 
-    const profileCheck = await sb
-      .from("professors")
-      .select("*")
-      .eq("id", state.session.user.id)
-      .maybeSingle();
+  student.lastAccess = new Date().toISOString();
+  saveData(data);
 
-    if(profileCheck.error){
-      console.warn(
-        "Não foi possível consultar o perfil pelo SDK:",
-        profileCheck.error
-      );
-    }
+  state.role = "student";
+  state.student = student;
+  state.currentClass = classItem;
+  setSession({role:"student",userId:student.id});
 
-    if(profileCheck.data){
-      state.professor = profileCheck.data;
+  showStudentDashboard();
+}
 
-      toast(
-        "Este perfil já existia. Acesso realizado.",
-        "success"
-      );
+async function restoreSession(){
+  const session = getSession();
+  if(!session) return;
 
-      form.reset();
-      await routeAuthenticatedUser();
-      return;
-    }
+  const data = loadData();
 
-    /* --------------------------------------------------------
-       5. CRIAR PERFIL NO BANCO
-       Usa o JWT real do professor no RPC direto.
-       -------------------------------------------------------- */
-    etapa = "criação do perfil do professor";
-    submitButton.textContent = "SALVANDO PERFIL...";
+  if(session.role === "professor"){
+    const professor = data.professors.find(p => p.id === session.userId);
+    if(!professor) return;
+    state.role = "professor";
+    state.professor = professor;
+    await enterProfessorArea();
+    return;
+  }
 
-    await resilientRpc(
-      "create_my_professor_profile",
-      {
-        p_name: name,
-        p_username: username,
-        p_master_key: masterKey
-      },
-      state.session.access_token
-    );
-
-    toast(
-      "Perfil do professor criado com sucesso.",
-      "success"
-    );
-
-    form.reset();
-    await routeAuthenticatedUser();
-
-  }catch(error){
-    console.error(
-      `Erro no cadastro do professor — etapa: ${etapa}`,
-      error
-    );
-
-    const codepen = /codepen|cdpn/i.test(
-      `${window.location.hostname} ${document.referrer}`
-    );
-
-    const extra =
-      /failed to fetch|não foi possível alcançar|network|fetch/i.test(
-        String(error?.message || error)
-      )
-        ? (codepen
-            ? " O preview do CodePen pode estar bloqueando a chamada. O mesmo código deve ser testado também no GitHub Pages ou no modo Debug/Full Page do CodePen."
-            : " Verifique a conexão do navegador e extensões que possam bloquear requisições.")
-        : "";
-
-    toast(
-      `Erro na etapa "${etapa}": ${error?.message || "falha desconhecida"}.${extra}`,
-      "error",
-      14000
-    );
-
-  }finally{
-    submitButton.disabled = false;
-    submitButton.textContent = originalText;
+  if(session.role === "student"){
+    const student = data.students.find(s => s.id === session.userId);
+    if(!student) return;
+    state.role = "student";
+    state.student = student;
+    state.currentClass = data.classes.find(c => c.id === student.classId) || null;
+    showStudentDashboard();
   }
 }
 
-async function studentLogin(e){
-  e.preventDefault();
+function logout(){
+  stopActivityTimer(true);
+  setSession(null);
 
-  const classCode=normalizeClassCode(
-    $("#studentLoginClassCode").value
+  state.role = null;
+  state.professor = null;
+  state.student = null;
+  state.currentClass = null;
+  state.currentContext = null;
+  state.currentActivity = null;
+
+  setTopbar(false);
+  showScreen("screenLanding");
+}
+
+async function enterProfessorArea(){
+  const data = loadData();
+  const fresh = data.professors.find(p => p.id === state.professor.id);
+  if(fresh) state.professor = fresh;
+
+  setTopbarIdentity(state.professor.name,"Professor");
+  setTopbar(true,"professor");
+
+  if(state.professor.requireAdminKey){
+    $("#adminGateKey").value = "";
+    $("#adminGateModal").classList.remove("hidden");
+    return;
+  }
+
+  showProfessorHome();
+}
+
+async function submitAdminGate(event){
+  event.preventDefault();
+
+  const typedHash = await hashText($("#adminGateKey").value);
+  const data = loadData();
+  const professor = data.professors.find(p => p.id === state.professor.id);
+
+  if(!professor || professor.accessKeyHash !== typedHash){
+    return toast("Chave pessoal inválida.","error");
+  }
+
+  $("#adminGateModal").classList.add("hidden");
+  showProfessorHome();
+}
+
+/* ============================================================
+   STREAMING
+   ============================================================ */
+function showProfessorHome(){
+  $("#professorWelcome").textContent = `Olá, ${state.professor.name}.`;
+  setTopbarIdentity(state.professor.name,"Professor");
+  setActiveTopNav("home");
+  renderProfessorHeroStats();
+  renderStreamingRows();
+  setTopbar(true,"professor");
+  showScreen("screenProfessorHome");
+}
+
+function renderStreamingRows(){
+  const container = $("#streamingRows");
+  container.innerHTML = "";
+
+  STREAMING_ROWS.forEach(row => {
+    const section = document.createElement("section");
+    section.className = "stream-row";
+
+    section.innerHTML = `
+      <div class="stream-row-heading">
+        <h2>${escapeHtml(row.title)}</h2>
+      </div>
+      <div class="cover-grid"></div>
+    `;
+
+    const grid = $(".cover-grid",section);
+
+    row.items.forEach(item => {
+      const wrapper = document.createElement("article");
+      wrapper.className = "cover-item";
+
+      wrapper.innerHTML = `
+        <button class="cover-card" type="button" aria-label="Abrir ${escapeHtml(item.title)}">
+          <img src="${escapeHtml(item.image)}" alt="${escapeHtml(item.title)}" loading="lazy">
+          <div class="cover-fallback hidden" aria-hidden="true">
+            <span>${escapeHtml(item.title)}</span>
+          </div>
+        </button>
+
+        <div class="cover-info">
+          <div>
+            <strong>${escapeHtml(item.title)}</strong>
+            <small>${escapeHtml(item.subtitle || "")}</small>
+          </div>
+          <span class="cover-action">Abrir área →</span>
+        </div>
+      `;
+
+      const button = $(".cover-card",wrapper);
+      const img = $("img",wrapper);
+      const fallback = $(".cover-fallback",wrapper);
+
+      img.addEventListener("load",() => fallback.classList.add("hidden"));
+      img.addEventListener("error",() => {
+        img.classList.add("hidden");
+        fallback.classList.remove("hidden");
+      });
+
+      button.addEventListener("click",() => openWorkspace(item));
+      grid.appendChild(wrapper);
+    });
+
+    container.appendChild(section);
+  });
+}
+
+function openWorkspace(context){
+  state.currentContext = {...context};
+
+  $("#workspaceTitle").textContent = context.title;
+  $("#workspaceSubtitle").textContent = context.subtitle || "";
+
+  $("#activityContextSummary").innerHTML = `
+    <strong>${escapeHtml(context.title)}</strong>
+    <span>${escapeHtml(context.subtitle || "")}</span>
+  `;
+
+  populateClassSelects();
+  renderClassList();
+  renderActivityList();
+  renderOverviewMetrics();
+
+  setWorkspaceTab("overview");
+  showScreen("screenWorkspace");
+}
+
+function setWorkspaceTab(tab){
+  $$(".workspace-tab").forEach(button => {
+    button.classList.toggle("active",button.dataset.workTab === tab);
+  });
+
+  $$(".workspace-panel").forEach(panel => panel.classList.remove("active"));
+
+  const map = {
+    overview:"#workOverview",
+    classes:"#workClasses",
+    activities:"#workActivities",
+    upload:"#workUpload",
+    reports:"#workReports"
+  };
+
+  $(map[tab])?.classList.add("active");
+
+  if(tab === "overview"){
+    setActiveTopNav("home");
+    renderOverviewMetrics();
+  }
+
+  if(tab === "classes"){
+    setActiveTopNav("classes");
+    renderClassList();
+  }
+
+  if(tab === "activities"){
+    setActiveTopNav("activities");
+    renderActivityList();
+  }
+
+  if(tab === "upload"){
+    setActiveTopNav("activities");
+    populateClassSelects();
+  }
+
+  if(tab === "reports"){
+    setActiveTopNav("reports");
+    prepareReports();
+  }
+}
+
+function emptyClassObservationData(){
+  return {
+    studentCount:0,
+    profile:"",
+    strategies:"",
+    resources:""
+  };
+}
+
+function normalizeClassObservationData(value){
+  return {
+    studentCount:Math.max(0,Number(value?.studentCount || 0)),
+    profile:String(value?.profile || ""),
+    strategies:String(value?.strategies || ""),
+    resources:String(value?.resources || "")
+  };
+}
+
+function classObservationHasContent(value){
+  const data = normalizeClassObservationData(value);
+  return data.studentCount > 0 || Boolean(data.profile.trim() || data.strategies.trim() || data.resources.trim());
+}
+
+function setClassObservationSummary(value){
+  const host = $("#classObservationSummary");
+  if(!host) return;
+
+  const data = normalizeClassObservationData(value);
+  if(!classObservationHasContent(data)){
+    host.innerHTML = `Nenhuma observação pedagógica detalhada registrada.`;
+    return;
+  }
+
+  host.innerHTML = `
+    <strong>${data.studentCount}</strong> aluno(s) sinalizado(s) para adaptações
+    <span>•</span>
+    <span>Informações pedagógicas registradas</span>
+  `;
+}
+
+function openClassObservations(classId=null){
+  const data = loadData();
+  let observations = state.classObservationDraft || emptyClassObservationData();
+  let title = "Nova turma";
+
+  if(classId){
+    const item = data.classes.find(c => c.id === classId && c.professorId === state.professor.id);
+    if(!item) return;
+    observations = normalizeClassObservationData(item.supportObservations);
+    title = item.name || "Turma";
+    $("#classObservationsTargetId").value = classId;
+  }else{
+    const editId = $("#classEditId")?.value || "";
+    if(editId && !state.classObservationDraft){
+      const item = data.classes.find(c => c.id === editId && c.professorId === state.professor.id);
+      if(item){
+        observations = normalizeClassObservationData(item.supportObservations);
+        title = item.name || "Turma";
+      }
+    }else{
+      title = $("#className")?.value.trim() || "Nova turma";
+    }
+    $("#classObservationsTargetId").value = "";
+  }
+
+  $("#classObservationsTitle").textContent = `Observações da turma — ${title}`;
+  $("#classSupportStudentCount").value = observations.studentCount || 0;
+  $("#classSupportProfile").value = observations.profile || "";
+  $("#classSupportStrategies").value = observations.strategies || "";
+  $("#classSupportResources").value = observations.resources || "";
+  $("#classObservationsModal").classList.remove("hidden");
+}
+
+function closeClassObservations(){
+  $("#classObservationsModal").classList.add("hidden");
+}
+
+function getClassObservationsFromModal(){
+  return normalizeClassObservationData({
+    studentCount:$("#classSupportStudentCount").value,
+    profile:$("#classSupportProfile").value.trim(),
+    strategies:$("#classSupportStrategies").value.trim(),
+    resources:$("#classSupportResources").value.trim()
+  });
+}
+
+function saveClassObservations(){
+  const observations = getClassObservationsFromModal();
+  const targetId = $("#classObservationsTargetId").value;
+
+  if(targetId){
+    const data = loadData();
+    const item = data.classes.find(c => c.id === targetId && c.professorId === state.professor.id);
+    if(!item) return;
+    item.supportObservations = observations;
+    saveData(data);
+    renderClassList();
+    toast("Observações da turma salvas.","success");
+  }else{
+    state.classObservationDraft = observations;
+    setClassObservationSummary(observations);
+    toast("Observações registradas para esta turma.","success");
+  }
+
+  closeClassObservations();
+}
+
+function clearClassObservationsFields(){
+  $("#classSupportStudentCount").value = 0;
+  $("#classSupportProfile").value = "";
+  $("#classSupportStrategies").value = "";
+  $("#classSupportResources").value = "";
+}
+
+/* ============================================================
+   TURMAS
+   ============================================================ */
+function currentProfessorClasses(){
+  const data = loadData();
+  return data.classes.filter(c => c.professorId === state.professor.id);
+}
+
+function populateClassSelects(){
+  const classes = currentProfessorClasses();
+
+  [
+    ["#uploadAssignClass","Somente banco do professor"],
+    ["#reportClassSelect","Selecione uma turma"]
+  ].forEach(([selector,placeholder]) => {
+    const select = $(selector);
+    if(!select) return;
+
+    const previous = select.value;
+
+    select.innerHTML = `<option value="">${placeholder}</option>` +
+      classes.map(item =>
+        `<option value="${item.id}">${escapeHtml(item.name)}</option>`
+      ).join("");
+
+    if(classes.some(item => item.id === previous)){
+      select.value = previous;
+    }
+  });
+}
+
+function saveClass(event){
+  event.preventDefault();
+
+  const data = loadData();
+  const editId = $("#classEditId").value;
+
+  const payload = {
+    name:$("#className").value.trim(),
+    grade:$("#classGrade").value.trim(),
+    schoolYear:Number($("#classYear").value) || null,
+    code:normalizeClassCode($("#classCode").value),
+    supportObservations:normalizeClassObservationData(state.classObservationDraft),
+    levels:$$('input[name="classLevel"]:checked').map(input => input.value)
+  };
+
+  if(!payload.name) return toast("Informe o nome da turma.","error");
+  if(!payload.code) return toast("Informe um código de acesso.","error");
+  if(!payload.levels.length) return toast("Selecione pelo menos um nível.","error");
+
+  const duplicateCode = data.classes.some(item =>
+    item.code === payload.code &&
+    item.id !== editId
   );
 
-  const roster=String(
-    $("#studentLoginRoster").value
-  ).replace(/\D/g,"").padStart(2,"0");
+  if(duplicateCode) return toast("Este código de turma já está em uso.","error");
 
-  const password=$("#studentLoginPassword").value;
+  if(editId){
+    const item = data.classes.find(c =>
+      c.id === editId &&
+      c.professorId === state.professor.id
+    );
 
-  if(!/^\d{2}$/.test(roster)){
+    if(!item) return;
+    Object.assign(item,payload);
+  }else{
+    data.classes.push({
+      id:uid("class"),
+      professorId:state.professor.id,
+      createdAt:new Date().toISOString(),
+      ...payload
+    });
+  }
+
+  saveData(data);
+  resetClassForm();
+  populateClassSelects();
+  renderClassList();
+  renderProfessorHeroStats();
+  renderOverviewMetrics();
+  toast(editId ? "Turma atualizada." : "Turma cadastrada.","success");
+}
+
+function renderClassList(){
+  const list = $("#classList");
+  const classes = currentProfessorClasses();
+
+  if(!classes.length){
+    list.innerHTML = emptyState(
+      "⌂",
+      "Nenhuma turma cadastrada",
+      "Cadastre a primeira turma para organizar alunos, atividades e relatórios."
+    );
+    return;
+  }
+
+  list.innerHTML = classes.map(item => `
+    <article class="list-card">
+      <div class="list-card-top">
+        <div>
+          <h3>${escapeHtml(item.name)}</h3>
+          <p>${escapeHtml(item.grade || "Etapa não informada")} • ${escapeHtml(item.schoolYear || "—")}</p>
+        </div>
+        <span class="badge">${escapeHtml(item.code)}</span>
+      </div>
+
+      <div class="badge-row">
+        <span class="badge">Níveis: ${escapeHtml((item.levels || []).join(", ") || "nenhum")}</span>
+      </div>
+
+      ${classObservationHasContent(item.supportObservations) ? `
+        <div class="class-support-status">
+          <strong>${Number(item.supportObservations?.studentCount || 0)}</strong> aluno(s) com observações pedagógicas para adaptação
+        </div>
+      ` : ""}
+
+      <div class="card-actions">
+        <button class="btn btn-small btn-outline" type="button" data-edit-class="${item.id}">
+          EDITAR TURMA
+        </button>
+        <button class="btn btn-small btn-gold" type="button" data-class-observations="${item.id}">
+          OBSERVAÇÕES DA TURMA
+        </button>
+      </div>
+    </article>
+  `).join("");
+
+  $$("[data-edit-class]",list).forEach(button => {
+    button.addEventListener("click",() => editClass(button.dataset.editClass));
+  });
+
+  $$("[data-class-observations]",list).forEach(button => {
+    button.addEventListener("click",() => openClassObservations(button.dataset.classObservations));
+  });
+}
+
+function editClass(classId){
+  const item = currentProfessorClasses().find(c => c.id === classId);
+  if(!item) return;
+
+  $("#classEditId").value = item.id;
+  $("#className").value = item.name || "";
+  $("#classGrade").value = item.grade || "";
+  $("#classYear").value = item.schoolYear || "";
+  $("#classCode").value = item.code || "";
+  state.classObservationDraft = normalizeClassObservationData(item.supportObservations);
+  setClassObservationSummary(state.classObservationDraft);
+
+  $$('input[name="classLevel"]').forEach(input => {
+    input.checked = (item.levels || []).includes(input.value);
+  });
+
+  $("#classFormTitle").textContent = "Editar turma";
+  $("#cancelClassEditBtn").classList.remove("hidden");
+  setWorkspaceTab("classes");
+}
+
+function resetClassForm(){
+  $("#classForm").reset();
+  $("#classEditId").value = "";
+  $("#classFormTitle").textContent = "Cadastrar turma";
+  $("#cancelClassEditBtn").classList.add("hidden");
+  $("#classYear").value = new Date().getFullYear();
+  $("#classCode").value = makeRandomClassCode();
+  state.classObservationDraft = emptyClassObservationData();
+  setClassObservationSummary(state.classObservationDraft);
+}
+
+/* ============================================================
+   BANCO DE ATIVIDADES
+   ============================================================ */
+function contextMatchesActivity(activity){
+  if(!state.currentContext) return true;
+  return activity.contextSlug === state.currentContext.slug;
+}
+
+function getActivityAssignedClasses(activityId,data,classes){
+  const assignedIds = new Set(
+    data.assignments
+      .filter(item => item.activityId === activityId)
+      .map(item => item.classId)
+  );
+
+  return classes.filter(item => assignedIds.has(item.id));
+}
+
+function renderAssignmentStatus(activityId,data,classes){
+  const assigned = getActivityAssignedClasses(activityId,data,classes);
+
+  if(!assigned.length){
+    return `<div class="assignment-status assignment-status-empty">Ainda não liberada para nenhuma turma.</div>`;
+  }
+
+  return `
+    <div class="assignment-status">
+      <strong>Liberada para:</strong>
+      <div class="assignment-class-badges">
+        ${assigned.map(item => `<span>${escapeHtml(item.name)}</span>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderActivityList(){
+  const list = $("#activityList");
+  const data = loadData();
+
+  const search = String($("#activitySearch")?.value || "").trim().toLowerCase();
+  const level = $("#activityLevelFilter")?.value || "";
+  const sort = $("#activitySort")?.value || "newest";
+
+  let items = data.activities.filter(activity =>
+    activity.professorId === state.professor.id &&
+    contextMatchesActivity(activity)
+  );
+
+  if(search){
+    items = items.filter(item =>
+      [item.title,item.statement,item.question,item.module,item.area]
+        .some(value => String(value || "").toLowerCase().includes(search))
+    );
+  }
+
+  if(level){
+    items = items.filter(item => item.level === level);
+  }
+
+  if(sort === "title"){
+    items.sort((a,b) => String(a.title).localeCompare(String(b.title),"pt-BR"));
+  }else{
+    items.sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  }
+
+  const count = $("#activityResultCount");
+  if(count){
+    count.textContent = `${items.length} ${items.length === 1 ? "atividade" : "atividades"}`;
+  }
+
+  if(!items.length){
+    const hasFilters = Boolean(search || level);
+
+    list.innerHTML = emptyState(
+      hasFilters ? "⌕" : "＋",
+      hasFilters ? "Nenhuma atividade encontrada" : "Seu banco ainda está vazio",
+      hasFilters
+        ? "Tente ajustar a pesquisa ou os filtros selecionados."
+        : "Importe um arquivo para começar a montar seu banco de atividades.",
+      hasFilters ? "" : "IMPORTAR ATIVIDADES",
+      hasFilters ? "" : 'data-empty-open-upload'
+    );
+
+    $("[data-empty-open-upload]",list)?.addEventListener("click",() => {
+      setWorkspaceTab("upload");
+    });
+
+    return;
+  }
+
+  const classes = currentProfessorClasses();
+
+  list.innerHTML = items.map(item => `
+    <article class="activity-card premium-activity-card">
+      <div class="activity-card-top">
+        <div>
+          <h3>${escapeHtml(item.title)}</h3>
+          <p>${escapeHtml(item.statement)}</p>
+        </div>
+        <span class="badge">${escapeHtml(item.level || "Sem nível")}</span>
+      </div>
+
+      <div class="badge-row">
+        <span class="badge">${escapeHtml(item.area)}</span>
+        <span class="badge">${escapeHtml(item.module)}</span>
+        <span class="badge">${escapeHtml(item.type || "atividade")}</span>
+      </div>
+
+      <div class="assignment-release-panel">
+        <div class="assignment-release-heading">
+          <div>
+            <strong>Liberar atividade para</strong>
+            <small>Selecione uma turma, várias turmas ou todas.</small>
+          </div>
+        </div>
+
+        ${classes.length ? `
+          <div class="assignment-release-controls">
+            <details class="class-multiselect" data-class-picker="${item.id}">
+              <summary>
+                <span data-selection-summary="${item.id}">Escolha as turmas</span>
+                <span class="class-picker-arrow">⌄</span>
+              </summary>
+
+              <div class="class-multiselect-menu">
+                <label class="class-option class-option-all">
+                  <input type="checkbox" data-assign-all="${item.id}">
+                  <span>Todas as turmas</span>
+                </label>
+
+                <div class="class-option-list">
+                  ${classes.map(c => `
+                    <label class="class-option">
+                      <input type="checkbox" value="${c.id}" data-assign-class="${item.id}">
+                      <span>${escapeHtml(c.name)}</span>
+                    </label>
+                  `).join("")}
+                </div>
+              </div>
+            </details>
+
+            <button class="btn btn-primary assignment-release-button" type="button" data-assign-activity="${item.id}">
+              LIBERAR ATIVIDADE
+            </button>
+          </div>
+        ` : `
+          <div class="assignment-no-classes">
+            Cadastre uma turma para poder liberar esta atividade.
+          </div>
+        `}
+
+        ${renderAssignmentStatus(item.id,data,classes)}
+      </div>
+    </article>
+  `).join("");
+
+  items.forEach(item => setupActivityClassPicker(item.id,classes,list));
+
+  $$('[data-assign-activity]',list).forEach(button => {
+    button.addEventListener('click',() => {
+      const activityId = button.dataset.assignActivity;
+      const selected = $$(`[data-assign-class="${activityId}"]:checked`,list)
+        .map(input => input.value);
+
+      if(!selected.length){
+        return toast('Escolha pelo menos uma turma.','error');
+      }
+
+      assignActivityToClasses(activityId,selected);
+    });
+  });
+}
+
+function setupActivityClassPicker(activityId,classes,root){
+  const allInput = $(`[data-assign-all="${activityId}"]`,root);
+  const classInputs = $$(`[data-assign-class="${activityId}"]`,root);
+  const summary = $(`[data-selection-summary="${activityId}"]`,root);
+
+  if(!allInput || !summary) return;
+
+  const updateSummary = () => {
+    const selected = classInputs.filter(input => input.checked);
+    const allSelected = classInputs.length > 0 && selected.length === classInputs.length;
+
+    allInput.checked = allSelected;
+    allInput.indeterminate = selected.length > 0 && !allSelected;
+
+    if(allSelected){
+      summary.textContent = 'Todas as turmas';
+    }else if(selected.length === 1){
+      const selectedClass = classes.find(item => item.id === selected[0].value);
+      summary.textContent = selectedClass?.name || '1 turma selecionada';
+    }else if(selected.length > 1){
+      summary.textContent = `${selected.length} turmas selecionadas`;
+    }else{
+      summary.textContent = 'Escolha as turmas';
+    }
+  };
+
+  allInput.addEventListener('change',() => {
+    classInputs.forEach(input => {
+      input.checked = allInput.checked;
+    });
+    updateSummary();
+  });
+
+  classInputs.forEach(input => input.addEventListener('change',updateSummary));
+  updateSummary();
+}
+
+function assignActivityToClasses(activityId,classIds){
+  const data = loadData();
+  const uniqueClassIds = [...new Set(classIds)];
+  let added = 0;
+
+  uniqueClassIds.forEach(classId => {
+    const exists = data.assignments.some(item =>
+      item.activityId === activityId &&
+      item.classId === classId
+    );
+
+    if(!exists){
+      data.assignments.push({
+        id:uid("assign"),
+        activityId,
+        classId,
+        createdAt:new Date().toISOString()
+      });
+      added += 1;
+    }
+  });
+
+  saveData(data);
+  renderOverviewMetrics();
+  renderActivityList();
+
+  if(added === 0){
+    toast('A atividade já estava liberada para as turmas selecionadas.','info');
+  }else if(uniqueClassIds.length === 1){
+    toast('Atividade liberada para a turma selecionada.','success');
+  }else{
+    toast(`Atividade liberada para ${uniqueClassIds.length} turmas.`,`success`);
+  }
+}
+
+function assignActivity(activityId,classId){
+  assignActivityToClasses(activityId,[classId]);
+}
+
+/* ============================================================
+   UPLOAD CSV
+   ============================================================ */
+async function processActivityFile(fileOverride=null){
+  const file = fileOverride || $("#activityFile").files?.[0];
+
+  if(!file){
+    return toast("Selecione um arquivo CSV, XLS, XLSX ou DOCX.","error");
+  }
+
+  const extension = file.name.split(".").pop().toLowerCase();
+
+  if(!["csv","xls","xlsx","docx"].includes(extension)){
+    return toast("Formato não aceito. Use CSV, XLS, XLSX ou DOCX.","error");
+  }
+
+  $("#activityFileDropTitle").textContent = file.name;
+  $("#activityFileDropMeta").textContent =
+    `${extension.toUpperCase()} • ${formatFileSize(file.size)} • analisando...`;
+
+  let rows = [];
+
+  try{
+    rows = await parseActivityImportFile(file);
+  }catch(error){
+    $("#activityFileDropMeta").textContent =
+      `${extension.toUpperCase()} • não foi possível ler o arquivo`;
+    return toast(error.message || "Não foi possível ler o arquivo.","error",6500);
+  }
+
+  if(!rows.length){
+    $("#activityFileDropMeta").textContent =
+      `${extension.toUpperCase()} • nenhuma atividade encontrada`;
+    return toast("Nenhuma atividade identificada no arquivo.","error");
+  }
+
+  const normalizedRows = rows.map(normalizeActivityRow);
+
+  const valid = normalizedRows.filter(row => row.title && row.statement);
+  const invalid = normalizedRows.filter(row => !row.title || !row.statement);
+
+  state.pendingImport = {
+    fileName:file.name,
+    extension,
+    total:normalizedRows.length,
+    valid,
+    invalid
+  };
+
+  $("#activityFileDropMeta").textContent =
+    `${extension.toUpperCase()} • ${formatFileSize(file.size)} • ${valid.length} atividade(s) válida(s)`;
+
+  renderUploadPreview();
+}
+
+function renderUploadPreview(){
+  const pending = state.pendingImport;
+  const preview = $("#uploadPreview");
+
+  if(!pending){
+    preview.classList.add("hidden");
+    $("#uploadConfirmActions").classList.add("hidden");
+    return;
+  }
+
+  preview.classList.remove("hidden");
+  preview.innerHTML = `
+    <div class="upload-preview-head">
+      <div>
+        <span class="eyebrow">ARQUIVO PRONTO</span>
+        <h3>${escapeHtml(pending.fileName)}</h3>
+      </div>
+
+      <span class="review-status ${pending.invalid.length ? "review-warning" : "review-ok"}">
+        ${pending.invalid.length ? "Há linhas para revisar" : "Pronto para importar"}
+      </span>
+    </div>
+
+    <div class="upload-kpis">
+      ${metricCard("Encontradas",String(pending.total),"linhas ou registros","blue")}
+      ${metricCard("Válidas",String(pending.valid.length),"serão importadas","green")}
+      ${metricCard("Ignoradas",String(pending.invalid.length),"sem título ou enunciado","gold")}
+    </div>
+
+    ${pending.valid.length ? `
+      <div class="preview-sample">
+        <strong>Prévia</strong>
+        ${pending.valid.slice(0,6).map((row,index) => `
+          <div class="preview-row">
+            <span>${String(index+1).padStart(2,"0")}</span>
+            <div>
+              <strong>${escapeHtml(row.title)}</strong>
+              <small>${escapeHtml(row.statement.slice(0,120))}${row.statement.length > 120 ? "…" : ""}</small>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    ` : ""}
+  `;
+
+  $("#uploadConfirmActions").classList.toggle(
+    "hidden",
+    pending.valid.length === 0
+  );
+}
+
+function confirmActivityImport(){
+  const pending = state.pendingImport;
+
+  if(!pending?.valid?.length){
+    return toast("Selecione e analise um arquivo antes de importar.","error");
+  }
+
+  const data = loadData();
+  const classId = $("#uploadAssignClass").value || null;
+  let created = 0;
+
+  pending.valid.forEach(row => {
+    const activity = {
+      id:uid("activity"),
+      professorId:state.professor.id,
+      contextSlug:state.currentContext?.slug || "geral",
+      area:state.currentContext?.area || "Geral",
+      module:state.currentContext?.module || state.currentContext?.title || "Atividade",
+      title:row.title,
+      statement:row.statement,
+      question:row.question,
+      answer:row.answer,
+      level:row.level,
+      type:row.type,
+      operandA:row.operandA,
+      operandB:row.operandB,
+      unit:row.unit,
+      createdAt:new Date().toISOString()
+    };
+
+    data.activities.push(activity);
+
+    if(classId){
+      data.assignments.push({
+        id:uid("assign"),
+        activityId:activity.id,
+        classId,
+        createdAt:new Date().toISOString()
+      });
+    }
+
+    created += 1;
+  });
+
+  saveData(data);
+
+  $("#uploadResult").innerHTML = `
+    <div class="success-panel">
+      <strong>Importação concluída</strong>
+      <p>${created} ${created === 1 ? "atividade foi adicionada" : "atividades foram adicionadas"} ao banco.</p>
+    </div>
+  `;
+
+  resetActivityImport();
+  renderActivityList();
+  renderOverviewMetrics();
+  renderProfessorHeroStats();
+
+  toast(`${created} atividade(s) importada(s).`,"success");
+}
+
+function resetActivityImport(){
+  $("#activityFile").value = "";
+  $("#uploadPreview").classList.add("hidden");
+  $("#uploadConfirmActions").classList.add("hidden");
+  $("#activityFileDropTitle").textContent = "Clique ou arraste o arquivo aqui";
+  $("#activityFileDropMeta").textContent = "CSV • XLS • XLSX • DOCX";
+  state.pendingImport = null;
+}
+
+function formatFileSize(bytes){
+  const value = Number(bytes || 0);
+
+  if(value < 1024) return `${value} B`;
+  if(value < 1024*1024) return `${(value/1024).toFixed(1)} KB`;
+  return `${(value/(1024*1024)).toFixed(1)} MB`;
+}
+
+async function parseActivityImportFile(file){
+  const extension = file.name.split(".").pop().toLowerCase();
+
+  if(extension === "csv"){
+    return parseCsvFile(file);
+  }
+
+  if(extension === "xls" || extension === "xlsx"){
+    return parseSpreadsheetFile(file);
+  }
+
+  if(extension === "docx"){
+    return parseDocxFile(file);
+  }
+
+  throw new Error("Formato não suportado.");
+}
+
+async function parseCsvFile(file){
+  const text = await file.text();
+
+  if(window.XLSX){
+    const workbook = XLSX.read(text,{type:"string"});
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+
+    return XLSX.utils.sheet_to_json(firstSheet,{
+      defval:"",
+      raw:false
+    });
+  }
+
+  return parseDelimitedText(text);
+}
+
+async function parseSpreadsheetFile(file){
+  if(!window.XLSX){
+    throw new Error(
+      "O leitor de planilhas não carregou. Verifique a conexão com a internet e tente novamente."
+    );
+  }
+
+  const buffer = await file.arrayBuffer();
+  const workbook = XLSX.read(buffer,{type:"array"});
+
+  if(!workbook.SheetNames.length){
+    return [];
+  }
+
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+
+  return XLSX.utils.sheet_to_json(sheet,{
+    defval:"",
+    raw:false
+  });
+}
+
+async function parseDocxFile(file){
+  if(!window.mammoth){
+    throw new Error(
+      "O leitor de DOCX não carregou. Verifique a conexão com a internet e tente novamente."
+    );
+  }
+
+  const buffer = await file.arrayBuffer();
+  const result = await mammoth.convertToHtml({arrayBuffer:buffer});
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(result.value,"text/html");
+
+  const firstTable = doc.querySelector("table");
+
+  if(firstTable){
+    const tableRows = [...firstTable.querySelectorAll("tr")].map(row =>
+      [...row.querySelectorAll("th,td")].map(cell => cell.textContent.trim())
+    );
+
+    if(tableRows.length >= 2){
+      const headers = tableRows[0].map(value => value.trim());
+
+      return tableRows.slice(1)
+        .filter(row => row.some(value => String(value).trim()))
+        .map(row =>
+          Object.fromEntries(
+            headers.map((header,index) => [header,row[index] ?? ""])
+          )
+        );
+    }
+  }
+
+  const raw = await mammoth.extractRawText({arrayBuffer:buffer});
+  return parseLabeledDocxText(raw.value);
+}
+
+function parseLabeledDocxText(text){
+  const allowed = [
+    "titulo",
+    "enunciado",
+    "pergunta",
+    "resposta",
+    "nivel",
+    "tipo",
+    "unidade",
+    "operando_a",
+    "operando_b"
+  ];
+
+  const normalizedLines = String(text || "")
+    .replace(/\r/g,"")
+    .split("\n")
+    .map(line => line.trim());
+
+  const result = [];
+  let current = {};
+
+  function pushCurrent(){
+    if(Object.keys(current).length){
+      result.push(current);
+      current = {};
+    }
+  }
+
+  normalizedLines.forEach(line => {
+    if(!line){
+      if(current.titulo && current.enunciado){
+        pushCurrent();
+      }
+      return;
+    }
+
+    const match = line.match(/^([^:]+)\s*:\s*(.*)$/);
+
+    if(!match){
+      return;
+    }
+
+    const key = match[1]
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g,"")
+      .replace(/\s+/g,"_");
+
+    if(!allowed.includes(key)){
+      return;
+    }
+
+    if(key === "titulo" && current.titulo){
+      pushCurrent();
+    }
+
+    current[key] = match[2].trim();
+  });
+
+  pushCurrent();
+  return result;
+}
+
+function parseDelimitedText(text){
+  const lines = String(text || "")
+    .split(/\r?\n/)
+    .filter(line => line.trim() !== "");
+
+  if(!lines.length) return [];
+
+  const separator = lines[0].includes(";") ? ";" : ",";
+  const matrix = lines.map(line => splitDelimitedLine(line,separator));
+  const headers = matrix.shift().map(value => value.trim());
+
+  return matrix.map(columns =>
+    Object.fromEntries(
+      headers.map((header,index) => [header,(columns[index] ?? "").trim()])
+    )
+  );
+}
+
+function splitDelimitedLine(line,separator){
+  const result = [];
+  let current = "";
+  let quoted = false;
+
+  for(let i=0;i<line.length;i++){
+    const char = line[i];
+
+    if(char === '"'){
+      if(quoted && line[i+1] === '"'){
+        current += '"';
+        i += 1;
+      }else{
+        quoted = !quoted;
+      }
+      continue;
+    }
+
+    if(char === separator && !quoted){
+      result.push(current);
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  result.push(current);
+  return result;
+}
+
+/* ============================================================
+   PERFIL / SEGURANÇA
+   ============================================================ */
+function showProfessorProfile(){
+  const data = loadData();
+  const professor = data.professors.find(p => p.id === state.professor.id);
+  if(!professor) return;
+
+  state.professor = professor;
+
+  $("#profileInfo").innerHTML = `
+    <div class="profile-row">
+      <small>Nome</small>
+      <strong>${escapeHtml(professor.name)}</strong>
+    </div>
+
+    <div class="profile-row">
+      <small>Usuário</small>
+      <strong>${escapeHtml(professor.username)}</strong>
+    </div>
+
+    <div class="profile-row">
+      <small>Perfil</small>
+      <strong>Professor</strong>
+    </div>
+  `;
+
+  $("#requireAdminKeyToggle").checked = Boolean(professor.requireAdminKey);
+  setActiveTopNav("profile");
+  showScreen("screenProfessorProfile");
+}
+
+async function changeMyAccessKey(event){
+  event.preventDefault();
+
+  const newKey = $("#newAccessKey").value;
+  const confirmKey = $("#confirmAccessKey").value;
+
+  if(newKey.length < 8){
+    return toast("A nova chave deve ter pelo menos 8 caracteres.","error");
+  }
+
+  if(newKey !== confirmKey){
+    return toast("As chaves não coincidem.","error");
+  }
+
+  const data = loadData();
+  const professor = data.professors.find(p => p.id === state.professor.id);
+  if(!professor) return;
+
+  professor.accessKeyHash = await hashText(newKey);
+  saveData(data);
+  state.professor = professor;
+
+  event.target.reset();
+  toast("Chave pessoal alterada.","success");
+}
+
+function setAdminKeyRequired(){
+  const data = loadData();
+  const professor = data.professors.find(p => p.id === state.professor.id);
+  if(!professor) return;
+
+  professor.requireAdminKey = $("#requireAdminKeyToggle").checked;
+  saveData(data);
+  state.professor = professor;
+
+  toast(
+    professor.requireAdminKey
+      ? "A chave pessoal será exigida ao abrir a área administrativa."
+      : "A chave pessoal não será exigida ao abrir a área administrativa.",
+    "success"
+  );
+}
+
+/* ============================================================
+   ALUNO
+   ============================================================ */
+function showStudentDashboard(){
+  stopActivityTimer(true);
+
+  const data = loadData();
+  const student = data.students.find(s => s.id === state.student.id);
+
+  if(!student){
+    logout();
+    return;
+  }
+
+  state.student = student;
+  state.currentClass = data.classes.find(c => c.id === student.classId) || null;
+
+  setTopbarIdentity(student.name,"Aluno");
+  setActiveTopNav("student-dashboard");
+  setTopbar(true,"student");
+
+  $("#studentWelcome").textContent = `Olá, ${student.plainName}.`;
+  $("#studentClassInfo").textContent = state.currentClass
+    ? `${state.currentClass.name} • Código ${state.currentClass.code}`
+    : "";
+
+  const assignedIds = data.assignments
+    .filter(item => item.classId === student.classId)
+    .map(item => item.activityId);
+
+  const items = data.activities.filter(item => assignedIds.includes(item.id));
+
+  renderStudentProgressSummary(items,data);
+  renderStudentCatalog(items,data);
+  renderStudentActivities(items,data,state.studentContextSlug);
+
+  showScreen("screenStudentDashboard");
+}
+
+function renderStudentProgressSummary(items,data){
+  const host = $("#studentProgressSummary");
+  if(!host) return;
+
+  const submissions = data.submissions.filter(s =>
+    s.studentId === state.student.id &&
+    items.some(item => item.id === s.activityId)
+  );
+
+  const resolved = submissions.filter(s => s.resolved).length;
+  const inProgress = submissions.filter(s => !s.resolved).length;
+  const notStarted = Math.max(0,items.length - submissions.length);
+  const progress = items.length ? Math.round((resolved/items.length)*100) : 0;
+
+  host.innerHTML = `
+    <div class="student-progress-card">
+      <div class="progress-copy">
+        <span class="eyebrow">SEU PROGRESSO</span>
+        <strong>${progress}% concluído</strong>
+        <small>${resolved} de ${items.length} atividades concluídas</small>
+      </div>
+
+      <div class="progress-bar" aria-label="${progress}% concluído">
+        <span style="width:${progress}%"></span>
+      </div>
+
+      <div class="student-status-grid">
+        <div><strong>${notStarted}</strong><span>Não iniciadas</span></div>
+        <div><strong>${inProgress}</strong><span>Em andamento</span></div>
+        <div><strong>${resolved}</strong><span>Concluídas</span></div>
+      </div>
+    </div>
+  `;
+}
+
+function getStudentContextBySlug(slug){
+  for(const row of STREAMING_ROWS){
+    const item = row.items.find(entry => entry.slug === slug);
+    if(item) return item;
+  }
+  return null;
+}
+
+function renderStudentCatalog(items,data){
+  const container = $("#studentCatalogRows");
+  if(!container) return;
+
+  container.innerHTML = "";
+
+  STREAMING_ROWS.forEach(row => {
+    const section = document.createElement("section");
+    section.className = "student-stream-row";
+
+    section.innerHTML = `
+      <div class="student-stream-row-heading">
+        <h3>${escapeHtml(row.title)}</h3>
+      </div>
+      <div class="student-cover-grid"></div>
+    `;
+
+    const grid = $(".student-cover-grid",section);
+
+    row.items.forEach(context => {
+      const contextItems = items.filter(activity => activity.contextSlug === context.slug);
+      const resolvedCount = contextItems.filter(activity => {
+        const submission = data.submissions.find(s =>
+          s.studentId === state.student.id &&
+          s.activityId === activity.id
+        );
+        return submission?.resolved;
+      }).length;
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "student-cover-item";
+      button.dataset.studentContext = context.slug;
+
+      if(state.studentContextSlug === context.slug){
+        button.classList.add("active");
+      }
+
+      const activityLabel = contextItems.length === 1
+        ? "1 atividade liberada"
+        : `${contextItems.length} atividades liberadas`;
+
+      button.innerHTML = `
+        <span class="student-cover-image">
+          <img src="${escapeHtml(context.image)}" alt="${escapeHtml(context.title)}" loading="lazy">
+          <span class="student-cover-fallback hidden">${escapeHtml(context.title)}</span>
+
+          <span class="student-cover-count ${contextItems.length ? "has-activities" : ""}">
+            ${contextItems.length}
+          </span>
+        </span>
+
+        <span class="student-cover-copy">
+          <strong>${escapeHtml(context.title)}</strong>
+          <small>${escapeHtml(context.subtitle || "")}</small>
+
+          <span class="student-cover-meta">
+            <span>${escapeHtml(activityLabel)}</span>
+            ${contextItems.length ? `<span>${resolvedCount}/${contextItems.length} concluídas</span>` : ""}
+          </span>
+        </span>
+      `;
+
+      const img = $("img",button);
+      const fallback = $(".student-cover-fallback",button);
+
+      img.addEventListener("load",() => {
+        fallback.classList.add("hidden");
+      });
+
+      img.addEventListener("error",() => {
+        img.classList.add("hidden");
+        fallback.classList.remove("hidden");
+      });
+
+      button.addEventListener("click",() => {
+        state.studentContextSlug = context.slug;
+
+        $$(".student-cover-item").forEach(card => {
+          card.classList.toggle(
+            "active",
+            card.dataset.studentContext === context.slug
+          );
+        });
+
+        renderStudentActivities(items,data,context.slug);
+
+        $("#studentComponentSection")?.scrollIntoView({
+          behavior:"smooth",
+          block:"start"
+        });
+      });
+
+      grid.appendChild(button);
+    });
+
+    container.appendChild(section);
+  });
+}
+
+function renderStudentActivities(items,data,contextSlug=null){
+  const container = $("#studentActivityGroups");
+  const titleEl = $("#studentComponentTitle");
+  const subtitleEl = $("#studentComponentSubtitle");
+  const clearButton = $("#clearStudentComponentFilter");
+
+  let visibleItems = [...items];
+
+  if(contextSlug){
+    visibleItems = visibleItems.filter(item => item.contextSlug === contextSlug);
+    const context = getStudentContextBySlug(contextSlug);
+
+    titleEl.textContent = context?.title || "Atividades";
+    subtitleEl.textContent = context
+      ? `Atividades liberadas em ${context.title} para sua turma.`
+      : "Atividades liberadas pelo professor para sua turma.";
+
+    clearButton.classList.remove("hidden");
+  }else{
+    titleEl.textContent = "Todas as atividades";
+    subtitleEl.textContent = "Atividades liberadas pelo professor para sua turma.";
+    clearButton.classList.toggle("hidden",items.length === 0);
+  }
+
+  if(!visibleItems.length){
+    const context = contextSlug ? getStudentContextBySlug(contextSlug) : null;
+
+    container.innerHTML = emptyState(
+      contextSlug ? "○" : "✓",
+      contextSlug
+        ? `Nenhuma atividade liberada em ${context?.title || "esta área"}`
+        : "Nenhuma atividade liberada ainda",
+      contextSlug
+        ? "A capa está disponível para navegação, mas o professor ainda não liberou atividades deste componente para sua turma."
+        : "As áreas e componentes estão disponíveis acima. Quando o professor liberar uma atividade, ela aparecerá aqui."
+    );
+
+    return;
+  }
+
+  const grouped = new Map();
+
+  visibleItems.forEach(item => {
+    const context = getStudentContextBySlug(item.contextSlug);
+    const key = context?.title || item.module || item.area || "Atividades";
+
+    if(!grouped.has(key)) grouped.set(key,[]);
+    grouped.get(key).push(item);
+  });
+
+  container.innerHTML = [...grouped.entries()].map(([groupTitle,groupItems]) => `
+    <section class="student-group">
+      ${contextSlug ? "" : `<h3 class="student-activity-group-title">${escapeHtml(groupTitle)}</h3>`}
+
+      <div class="student-activity-grid">
+        ${groupItems.map(item => {
+          const submission = data.submissions.find(s =>
+            s.studentId === state.student.id &&
+            s.activityId === item.id
+          );
+
+          const status = submission?.resolved
+            ? "Concluída"
+            : submission
+              ? "Em andamento"
+              : "Não iniciada";
+
+          const statusClass = submission?.resolved
+            ? "is-complete"
+            : submission
+              ? "is-progress"
+              : "is-new";
+
+          return `
+            <button class="student-activity-card ${statusClass}" type="button" data-student-activity="${item.id}">
+              <div class="student-card-top">
+                <span class="eyebrow">${escapeHtml(item.level || item.area || "")}</span>
+                <span class="student-status">${status}</span>
+              </div>
+
+              <h3>${escapeHtml(item.title)}</h3>
+              <p>${escapeHtml(item.statement)}</p>
+
+              <div class="badge-row">
+                <span class="badge">${escapeHtml(item.module || item.area || "Atividade")}</span>
+                <span class="badge">Tentativas: ${submission?.attempts || 0}</span>
+              </div>
+
+              <span class="student-open-action">Abrir atividade →</span>
+            </button>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `).join("");
+
+  $$("[data-student-activity]",container).forEach(button => {
+    button.addEventListener("click",() => {
+      const item = visibleItems.find(
+        activity => activity.id === button.dataset.studentActivity
+      );
+
+      if(item) openStudentActivity(item);
+    });
+  });
+}
+
+function openStudentActivity(item){
+  const data = loadData();
+
+  let submission = data.submissions.find(s =>
+    s.studentId === state.student.id &&
+    s.activityId === item.id
+  );
+
+  if(!submission){
+    submission = {
+      id:uid("submission"),
+      studentId:state.student.id,
+      classId:state.student.classId,
+      activityId:item.id,
+      accessedAt:new Date().toISOString(),
+      updatedAt:new Date().toISOString(),
+      resolved:false,
+      attempts:0,
+      activeSeconds:0,
+      scratch:"",
+      finalAnswer:""
+    };
+
+    data.submissions.push(submission);
+    saveData(data);
+  }
+
+  state.currentActivity = item;
+  state.materialBoard = null;
+  state.activeSeconds = Number(submission.activeSeconds || 0);
+
+  $("#studentActivityMeta").textContent = [item.area,item.module,item.level].filter(Boolean).join(" • ");
+  $("#studentActivityTitle").textContent = item.title;
+  $("#studentActivityStatement").textContent = item.statement || "";
+  $("#studentActivityQuestion").textContent = item.question || "";
+  $("#studentScratch").value = submission.scratch || "";
+
+  renderStudentAnswerArea(submission);
+  renderInteractiveArea(item);
+
+  showScreen("screenStudentActivity");
+  startActivityTimer();
+
+  $("#studentScratch").oninput = debounce(saveCurrentProgress,600);
+}
+
+function renderStudentAnswerArea(submission){
+  const area = $("#studentAnswerArea");
+
+  area.innerHTML = `
+    <div class="answer-actions">
+      <label>
+        Resposta final
+        <input id="studentFinalAnswer" type="text" placeholder="Digite sua resposta">
+      </label>
+
+      <button id="submitStudentAnswerBtn" class="btn btn-primary" type="button">
+        ENVIAR RESPOSTA
+      </button>
+    </div>
+  `;
+
+  $("#studentFinalAnswer").value = submission.finalAnswer || "";
+  $("#submitStudentAnswerBtn").addEventListener("click",submitStudentAnswer);
+}
+
+function startActivityTimer(){
+  stopActivityTimer(false);
+
+  let lastTick = Date.now();
+  $("#activityTimerDisplay").textContent = timerText(state.activeSeconds);
+
+  state.timerHandle = setInterval(() => {
+    const now = Date.now();
+
+    if(!document.hidden){
+      const delta = Math.max(0,Math.min(2,Math.round((now-lastTick)/1000)));
+      state.activeSeconds += delta;
+      $("#activityTimerDisplay").textContent = timerText(state.activeSeconds);
+    }
+
+    lastTick = now;
+  },1000);
+
+  state.heartbeatHandle = setInterval(() => {
+    if(!document.hidden) saveCurrentProgress();
+  },10000);
+}
+
+function stopActivityTimer(save=true){
+  if(state.timerHandle){
+    clearInterval(state.timerHandle);
+    state.timerHandle = null;
+  }
+
+  if(state.heartbeatHandle){
+    clearInterval(state.heartbeatHandle);
+    state.heartbeatHandle = null;
+  }
+
+  if(save && state.currentActivity){
+    saveCurrentProgress();
+  }
+}
+
+function saveCurrentProgress(){
+  if(!state.student || !state.currentActivity) return;
+
+  const data = loadData();
+  const submission = data.submissions.find(s =>
+    s.studentId === state.student.id &&
+    s.activityId === state.currentActivity.id
+  );
+
+  if(!submission) return;
+
+  submission.activeSeconds = state.activeSeconds;
+  submission.scratch = $("#studentScratch")?.value || submission.scratch || "";
+  submission.finalAnswer = $("#studentFinalAnswer")?.value || submission.finalAnswer || "";
+  submission.updatedAt = new Date().toISOString();
+
+  const student = data.students.find(s => s.id === state.student.id);
+  if(student) student.lastAccess = new Date().toISOString();
+
+  saveData(data);
+}
+
+function submitStudentAnswer(){
+  const data = loadData();
+  const submission = data.submissions.find(s =>
+    s.studentId === state.student.id &&
+    s.activityId === state.currentActivity.id
+  );
+
+  if(!submission) return;
+
+  const answer = $("#studentFinalAnswer").value.trim();
+  const expected = String(state.currentActivity.answer || "").trim();
+
+  submission.attempts += 1;
+  submission.finalAnswer = answer;
+  submission.scratch = $("#studentScratch").value;
+  submission.activeSeconds = state.activeSeconds;
+  submission.updatedAt = new Date().toISOString();
+
+  const feedback = $("#studentAnswerFeedback");
+  feedback.classList.remove("hidden","correct","incorrect");
+
+  if(!expected){
+    submission.resolved = false;
+    feedback.classList.add("correct");
+    feedback.textContent = "Resposta registrada.";
+  }else{
+    const correct =
+      answer.replace(",",".").trim().toLowerCase() ===
+      expected.replace(",",".").trim().toLowerCase();
+
+    submission.resolved = correct;
+
+    if(correct){
+      feedback.classList.add("correct");
+      feedback.textContent = "Sua resposta está correta. Parabéns!";
+    }else{
+      feedback.classList.add("incorrect");
+      feedback.textContent = "Resposta incorreta. Revise sua estratégia e tente novamente.";
+    }
+  }
+
+  saveData(data);
+
+  const assignedIds = data.assignments
+    .filter(item => item.classId === state.student.classId)
+    .map(item => item.activityId);
+
+  const assignedItems = data.activities.filter(item => assignedIds.includes(item.id));
+  renderStudentProgressSummary(assignedItems,data);
+}
+
+/* ============================================================
+   MATERIAL DOURADO — DIVISÃO
+   ============================================================ */
+function parseMaterialNumberToken(token){
+  const raw = String(token || "").trim();
+
+  if(!raw) return NaN;
+
+  // Formatos brasileiros: 2.970, 144, 12, 4,5
+  const normalized = raw
+    .replace(/\.(?=\d{3}(?:\D|$))/g,"")
+    .replace(",",".")
+    .replace(/[^\d.-]/g,"");
+
+  const value = Number(normalized);
+  return Number.isFinite(value) ? value : NaN;
+}
+
+function inferMaterialOperands(item){
+  let dividend = Number(item?.operandA);
+  let divisor = Number(item?.operandB);
+
+  const explicitDividendValid = Number.isFinite(dividend) && dividend > 0;
+  const explicitDivisorValid = Number.isFinite(divisor) && divisor > 0;
+
+  if(explicitDividendValid && explicitDivisorValid){
+    return {
+      dividend:Math.round(dividend),
+      divisor:Math.max(1,Math.round(divisor)),
+      inferred:false
+    };
+  }
+
+  const source = `${item?.statement || ""} ${item?.question || ""}`;
+  const tokens = source.match(/\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:,\d+)?/g) || [];
+
+  const values = tokens
+    .map(parseMaterialNumberToken)
+    .filter(value => Number.isFinite(value) && value > 0);
+
+  if(!explicitDividendValid){
+    dividend = values[0] ?? 1;
+  }
+
+  if(!explicitDivisorValid){
+    const next = values.find((value,index) =>
+      index > 0 && value !== dividend
+    );
+    divisor = next ?? values[1] ?? 1;
+  }
+
+  // O laboratório trabalha visualmente com quantidades inteiras.
+  // Não bloqueia o acesso: apenas usa uma aproximação inteira quando necessário.
+  dividend = Math.max(1,Math.round(dividend));
+  divisor = Math.max(1,Math.round(divisor));
+
+  return {
+    dividend,
+    divisor,
+    inferred:true
+  };
+}
+
+function renderInteractiveArea(item){
+  const area = $("#interactiveArea");
+
+  if(item.contextSlug !== "divisao"){
+    area.innerHTML = "";
+    return;
+  }
+
+  const {dividend,divisor,inferred} = inferMaterialOperands(item);
+
+  area.innerHTML = `
+    <div class="material-access-card">
+      <div class="material-access-icon" aria-hidden="true">
+        <span class="mini-hundred"></span>
+        <span class="mini-ten"></span>
+        <span class="mini-unit"></span>
+      </div>
+
+      <div class="material-access-copy">
+        <span class="eyebrow">RECURSO DE APOIO</span>
+        <h2>Resolver com Material Dourado</h2>
+        <p>
+          Represente <strong>${dividend}</strong>, faça as trocas necessárias
+          e distribua as peças igualmente entre <strong>${divisor}</strong> grupos.
+        </p>
+        ${inferred ? `
+          <small class="material-inference-note">
+            Os valores foram identificados automaticamente a partir da atividade.
+          </small>
+        ` : ""}
+      </div>
+
+      <button id="openMaterialLabBtn" class="btn btn-material-open" type="button">
+        ABRIR MATERIAL DOURADO
+      </button>
+    </div>
+  `;
+
+  $("#openMaterialLabBtn")?.addEventListener("click",openMaterialLab);
+}
+
+function openMaterialLab(){
+  const item = state.currentActivity;
+  if(!item) return;
+
+  saveCurrentProgress();
+
+  const {dividend,divisor} = inferMaterialOperands(item);
+
+  state.materialBoard = createMaterialBoard(dividend,divisor);
+
+  $("#materialLabTitle").textContent = item.title || "Divisão com Material Dourado";
+  $("#materialLabStatement").textContent = item.statement || "";
+  $("#materialLabOperation").textContent = `${dividend} ÷ ${divisor}`;
+  $("#materialLabQuestion").textContent = item.question || "";
+
+  renderMaterialLab();
+  showScreen("screenMaterialLab");
+}
+
+function closeMaterialLab(){
+  showScreen("screenStudentActivity");
+  $("#activityTimerDisplay").textContent = timerText(state.activeSeconds);
+}
+
+function createMaterialBoard(dividend,divisor){
+  return {
+    dividend,
+    divisor,
+    confirmed:false,
+    phase:1,
+    selectedType:null,
+    available:{M:0,C:0,D:0,U:0},
+    groups:Array.from({length:divisor},() => ({M:0,C:0,D:0,U:0})),
+    solved:false
+  };
+}
+
+function materialCountsValue(counts){
+  const values = {M:1000,C:100,D:10,U:1};
+
+  return Object.entries(counts || {}).reduce(
+    (sum,[key,count]) => sum + (values[key] || 0) * Number(count || 0),
+    0
+  );
+}
+
+function materialTotalValue(board){
+  const poolValue = materialCountsValue(board.available);
+  const groupValue = board.groups.reduce(
+    (sum,group) => sum + materialCountsValue(group),
+    0
+  );
+
+  return poolValue + groupValue;
+}
+
+function pieceLabel(key){
+  return {
+    M:"Milhar",
+    C:"Centena",
+    D:"Dezena",
+    U:"Unidade"
+  }[key];
+}
+
+function renderPieceVisuals(counts,location="pool",groupIndex=null){
+  const keys = ["M","C","D","U"];
+  const totalPieces = keys.reduce((sum,key) => sum + Number(counts[key] || 0),0);
+
+  if(!totalPieces){
+    return `<div class="md-empty-pieces">Nenhuma peça</div>`;
+  }
+
+  return keys.map(key => {
+    const count = Number(counts[key] || 0);
+    if(!count) return "";
+
+    const visible = Math.min(count,24);
+    const pieces = Array.from({length:visible},(_,index) => {
+      const draggable = location === "pool" ? 'draggable="true"' : "";
+      const attrs = location === "pool"
+        ? `data-drag-piece="${key}"`
+        : `data-return-piece="${key}" data-return-group="${groupIndex}"`;
+
+      return `
+        <button
+          type="button"
+          class="md-piece md-piece-${key}"
+          title="${location === "pool" ? "Arraste para um grupo" : "Clique para devolver"}"
+          ${draggable}
+          ${attrs}
+          aria-label="${pieceLabel(key)} ${index+1}"
+        ></button>
+      `;
+    }).join("");
+
+    const remainder = count > visible
+      ? `<span class="md-more-pieces">+${count-visible}</span>`
+      : "";
+
+    return `
+      <div class="md-piece-cluster">
+        <div class="md-piece-cluster-label">
+          <strong>${pieceLabel(key)}</strong>
+          <span>${count}</span>
+        </div>
+        <div class="md-pieces-row">${pieces}${remainder}</div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderMaterialLab(){
+  const board = state.materialBoard;
+  const root = $("#materialLabRoot");
+
+  if(!board || !root) return;
+
+  const representedValue = materialCountsValue(board.available);
+  const quotient = board.dividend / board.divisor;
+  const integerQuotient = Number.isInteger(quotient);
+
+  root.innerHTML = `
+    <div class="material-lab-steps">
+      ${[
+        ["1","Representar"],
+        ["2","Trocar"],
+        ["3","Distribuir"],
+        ["4","Conferir"]
+      ].map(([number,label],index) => {
+        const step = index + 1;
+        const status = board.solved
+          ? "done"
+          : step < board.phase
+            ? "done"
+            : step === board.phase
+              ? "active"
+              : "";
+
+        return `
+          <div class="material-lab-step ${status}">
+            <span>${number}</span>
+            <strong>${label}</strong>
+          </div>
+        `;
+      }).join("")}
+    </div>
+
+    <section class="material-stage">
+      <div class="material-stage-heading">
+        <div>
+          <span class="stage-number">1</span>
+          <div>
+            <h2>Represente o dividendo</h2>
+            <p>Monte o número ${board.dividend} usando milhar, centena, dezena e unidade.</p>
+          </div>
+        </div>
+
+        <div class="representation-summary ${representedValue === board.dividend ? "is-correct" : ""}">
+          <span>Representado</span>
+          <strong>${representedValue}</strong>
+          <small>de ${board.dividend}</small>
+        </div>
+      </div>
+
+      <div class="material-white-grid">
+        ${[
+          ["M","MILHAR","1000"],
+          ["C","CENTENA","100"],
+          ["D","DEZENA","10"],
+          ["U","UNIDADE","1"]
+        ].map(([key,label,value]) => `
+          <article class="material-white-box">
+            <header>
+              <div>
+                <strong>${label}</strong>
+                <span>vale ${value}</span>
+              </div>
+              <span class="material-piece-count">${board.available[key]}</span>
+            </header>
+
+            <div class="material-piece-preview material-preview-${key}">
+              <span></span>
+            </div>
+
+            <div class="material-count-controls">
+              <button type="button" data-md-minus="${key}" aria-label="Retirar ${label.toLowerCase()}">−</button>
+              <strong>${board.available[key]}</strong>
+              <button type="button" data-md-plus="${key}" aria-label="Adicionar ${label.toLowerCase()}">+</button>
+            </div>
+          </article>
+        `).join("")}
+      </div>
+
+      <div class="material-stage-actions">
+        <button id="confirmMaterialRepresentationBtn" class="btn btn-primary" type="button">
+          ✓ CONFIRMAR REPRESENTAÇÃO
+        </button>
+
+        <button id="resetMaterialRepresentationBtn" class="btn btn-outline" type="button">
+          Refazer representação
+        </button>
+      </div>
+
+      <div class="material-message ${
+        representedValue === board.dividend ? "material-message-ready" : ""
+      }">
+        Valor representado: <strong>${representedValue}</strong>
+        <span>•</span>
+        Valor necessário: <strong>${board.dividend}</strong>
+      </div>
+    </section>
+
+    ${board.confirmed ? `
+      <section class="material-workspace-grid">
+        <aside class="material-stage material-exchange-stage">
+          <div class="material-stage-heading compact">
+            <div>
+              <span class="stage-number">2</span>
+              <div>
+                <h2>Trocas</h2>
+                <p>Faça trocas sem alterar o valor representado.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="exchange-pairs">
+            <div class="exchange-pair">
+              <button type="button" data-md-exchange="M-C">
+                <strong>1 milhar</strong><span>→</span><small>10 centenas</small>
+              </button>
+              <button type="button" data-md-exchange="C-M">
+                <strong>10 centenas</strong><span>→</span><small>1 milhar</small>
+              </button>
+            </div>
+
+            <div class="exchange-pair">
+              <button type="button" data-md-exchange="C-D">
+                <strong>1 centena</strong><span>→</span><small>10 dezenas</small>
+              </button>
+              <button type="button" data-md-exchange="D-C">
+                <strong>10 dezenas</strong><span>→</span><small>1 centena</small>
+              </button>
+            </div>
+
+            <div class="exchange-pair emphasized">
+              <button type="button" data-md-exchange="D-U">
+                <strong>1 dezena</strong><span>→</span><small>10 unidades</small>
+              </button>
+              <button type="button" data-md-exchange="U-D">
+                <strong>10 unidades</strong><span>→</span><small>1 dezena</small>
+              </button>
+            </div>
+          </div>
+
+          <div class="material-pool-card">
+            <div class="material-pool-heading">
+              <div>
+                <strong>Peças disponíveis</strong>
+                <small>Arraste uma peça ou use os botões nos grupos.</small>
+              </div>
+              <span>${materialCountsValue(board.available)}</span>
+            </div>
+
+            <div id="materialPiecePool" class="material-pool-pieces">
+              ${renderPieceVisuals(board.available,"pool")}
+            </div>
+          </div>
+        </aside>
+
+        <section class="material-stage material-distribution-stage">
+          <div class="material-stage-heading compact">
+            <div>
+              <span class="stage-number">3</span>
+              <div>
+                <h2>Distribua entre ${board.divisor} grupos</h2>
+                <p>Os grupos devem terminar com o mesmo valor.</p>
+              </div>
+            </div>
+
+            <div class="divisor-chip">
+              <span>DIVISOR</span>
+              <strong>${board.divisor}</strong>
+            </div>
+          </div>
+
+          <div class="material-groups-grid">
+            ${board.groups.map((group,index) => `
+              <article class="material-group-white" data-material-group="${index}">
+                <header>
+                  <div>
+                    <strong>Grupo ${index+1}</strong>
+                    <span>Valor: ${materialCountsValue(group)}</span>
+                  </div>
+                  <small>
+                    M:${group.M} • C:${group.C} • D:${group.D} • U:${group.U}
+                  </small>
+                </header>
+
+                <div class="material-group-pieces">
+                  ${renderPieceVisuals(group,"group",index)}
+                </div>
+
+                <div class="material-group-actions">
+                  ${["M","C","D","U"].map(key => `
+                    <button
+                      type="button"
+                      data-md-send="${key}"
+                      data-md-group="${index}"
+                      ${board.available[key] <= 0 ? "disabled" : ""}
+                    >
+                      + ${key}
+                    </button>
+                  `).join("")}
+                </div>
+              </article>
+            `).join("")}
+          </div>
+
+          <div class="material-stage-actions">
+            <button id="checkMaterialDistributionBtn" class="btn btn-primary" type="button">
+              ✓ CONFERIR O RESULTADO
+            </button>
+
+            <button id="collectMaterialPiecesBtn" class="btn btn-outline" type="button">
+              ↺ Recolher todas as peças
+            </button>
+
+            <button id="restartMaterialLabBtn" class="btn btn-outline" type="button">
+              Refazer tudo
+            </button>
+          </div>
+
+          <div id="materialDistributionFeedback" class="material-message">
+            ${
+              board.solved
+                ? `<strong>Parabéns!</strong> Cada grupo representa ${quotient}.`
+                : integerQuotient
+                  ? `Distribua todas as peças igualmente. Resultado esperado por grupo: <strong>?</strong>`
+                  : `Esta divisão não tem quociente inteiro e não é adequada para esta versão do laboratório.`
+            }
+          </div>
+
+          ${board.solved ? `
+            <div class="material-solved-panel">
+              <div>
+                <span>RESULTADO</span>
+                <strong>${board.dividend} ÷ ${board.divisor} = ${quotient}</strong>
+              </div>
+
+              <button id="useMaterialResultBtn" class="btn btn-success" type="button">
+                USAR RESULTADO NO EXERCÍCIO
+              </button>
+            </div>
+          ` : ""}
+        </section>
+      </section>
+    ` : ""}
+  `;
+
+  bindMaterialLabEvents();
+}
+
+function bindMaterialLabEvents(){
+  const board = state.materialBoard;
+  if(!board) return;
+
+  $$("[data-md-plus]").forEach(button => {
+    button.addEventListener("click",() => {
+      const key = button.dataset.mdPlus;
+      board.available[key] += 1;
+      board.confirmed = false;
+      board.phase = 1;
+      board.solved = false;
+      renderMaterialLab();
+    });
+  });
+
+  $$("[data-md-minus]").forEach(button => {
+    button.addEventListener("click",() => {
+      const key = button.dataset.mdMinus;
+      board.available[key] = Math.max(0,board.available[key]-1);
+      board.confirmed = false;
+      board.phase = 1;
+      board.solved = false;
+      renderMaterialLab();
+    });
+  });
+
+  $("#confirmMaterialRepresentationBtn")?.addEventListener("click",() => {
+    const value = materialCountsValue(board.available);
+
+    if(value !== board.dividend){
+      return toast(
+        `A representação vale ${value}. Monte exatamente ${board.dividend}.`,
+        "error"
+      );
+    }
+
+    board.confirmed = true;
+    board.phase = 2;
+    renderMaterialLab();
+    toast("Representação correta. Agora faça as trocas e distribua as peças.","success");
+  });
+
+  $("#resetMaterialRepresentationBtn")?.addEventListener("click",() => {
+    state.materialBoard = createMaterialBoard(board.dividend,board.divisor);
+    renderMaterialLab();
+  });
+
+  $$("[data-md-exchange]").forEach(button => {
+    button.addEventListener("click",() => {
+      applyMaterialExchange(button.dataset.mdExchange);
+    });
+  });
+
+  $$("[data-md-send]").forEach(button => {
+    button.addEventListener("click",() => {
+      moveMaterialPieceToGroup(
+        button.dataset.mdSend,
+        Number(button.dataset.mdGroup)
+      );
+    });
+  });
+
+  $$("[data-return-piece]").forEach(button => {
+    button.addEventListener("click",() => {
+      returnMaterialPieceToPool(
+        button.dataset.returnPiece,
+        Number(button.dataset.returnGroup)
+      );
+    });
+  });
+
+  $$("[data-drag-piece]").forEach(piece => {
+    piece.addEventListener("dragstart",event => {
+      event.dataTransfer.setData("text/material-piece",piece.dataset.dragPiece);
+      event.dataTransfer.effectAllowed = "move";
+    });
+  });
+
+  $$("[data-material-group]").forEach(group => {
+    group.addEventListener("dragover",event => {
+      event.preventDefault();
+      group.classList.add("is-dragover");
+    });
+
+    group.addEventListener("dragleave",() => {
+      group.classList.remove("is-dragover");
+    });
+
+    group.addEventListener("drop",event => {
+      event.preventDefault();
+      group.classList.remove("is-dragover");
+
+      const key = event.dataTransfer.getData("text/material-piece");
+      const index = Number(group.dataset.materialGroup);
+
+      if(key){
+        moveMaterialPieceToGroup(key,index);
+      }
+    });
+  });
+
+  $("#collectMaterialPiecesBtn")?.addEventListener("click",() => {
+    board.groups.forEach(group => {
+      ["M","C","D","U"].forEach(key => {
+        board.available[key] += group[key];
+        group[key] = 0;
+      });
+    });
+
+    board.phase = 2;
+    board.solved = false;
+    renderMaterialLab();
+  });
+
+  $("#restartMaterialLabBtn")?.addEventListener("click",() => {
+    state.materialBoard = createMaterialBoard(board.dividend,board.divisor);
+    renderMaterialLab();
+  });
+
+  $("#checkMaterialDistributionBtn")?.addEventListener("click",checkMaterialDistribution);
+
+  $("#useMaterialResultBtn")?.addEventListener("click",() => {
+    const quotient = board.dividend / board.divisor;
+
+    closeMaterialLab();
+
+    const answerInput = $("#studentFinalAnswer");
+    if(answerInput){
+      answerInput.value = String(quotient);
+      answerInput.focus();
+    }
+
+    toast("Resultado transferido para a resposta final. Revise e envie.","success");
+  });
+}
+
+function applyMaterialExchange(action){
+  const board = state.materialBoard;
+  if(!board) return;
+
+  const pool = board.available;
+  let valid = true;
+
+  if(action === "M-C" && pool.M >= 1){
+    pool.M -= 1;
+    pool.C += 10;
+  }else if(action === "C-M" && pool.C >= 10){
+    pool.C -= 10;
+    pool.M += 1;
+  }else if(action === "C-D" && pool.C >= 1){
+    pool.C -= 1;
+    pool.D += 10;
+  }else if(action === "D-C" && pool.D >= 10){
+    pool.D -= 10;
+    pool.C += 1;
+  }else if(action === "D-U" && pool.D >= 1){
+    pool.D -= 1;
+    pool.U += 10;
+  }else if(action === "U-D" && pool.U >= 10){
+    pool.U -= 10;
+    pool.D += 1;
+  }else{
+    valid = false;
+  }
+
+  if(!valid){
+    return toast("Não há peças suficientes para realizar essa troca.","error");
+  }
+
+  board.phase = Math.max(board.phase,2);
+  board.solved = false;
+  renderMaterialLab();
+}
+
+function moveMaterialPieceToGroup(key,index){
+  const board = state.materialBoard;
+  if(!board || !board.confirmed) return;
+  if(!["M","C","D","U"].includes(key)) return;
+  if(!board.groups[index]) return;
+
+  if(board.available[key] <= 0){
+    return toast(`Não há ${pieceLabel(key).toLowerCase()} disponível.`,"error");
+  }
+
+  board.available[key] -= 1;
+  board.groups[index][key] += 1;
+  board.phase = Math.max(board.phase,3);
+  board.solved = false;
+  renderMaterialLab();
+}
+
+function returnMaterialPieceToPool(key,index){
+  const board = state.materialBoard;
+  if(!board || !board.groups[index]) return;
+  if(board.groups[index][key] <= 0) return;
+
+  board.groups[index][key] -= 1;
+  board.available[key] += 1;
+  board.solved = false;
+  renderMaterialLab();
+}
+
+function checkMaterialDistribution(){
+  const board = state.materialBoard;
+  if(!board) return;
+
+  const quotient = board.dividend / board.divisor;
+
+  if(!Number.isInteger(quotient)){
     return toast(
-      "Informe o número da chamada com dois algarismos.",
+      "Esta versão do Material Dourado trabalha com quociente inteiro.",
       "error"
     );
   }
 
-  const candidateEmails=[
-    studentEmail(classCode,roster),
-    studentPreviousEmail(classCode,roster),
-    studentLegacyEmail(classCode,roster)
-  ];
+  const poolValue = materialCountsValue(board.available);
+  const values = board.groups.map(materialCountsValue);
+  const allEqual = values.every(value => value === quotient);
+  const correctTotal = materialTotalValue(board) === board.dividend;
 
-  let result=null;
+  if(poolValue === 0 && allEqual && correctTotal){
+    board.phase = 4;
+    board.solved = true;
+    renderMaterialLab();
+    toast("Distribuição correta. Parabéns!","success");
+    return;
+  }
 
-  for(const email of candidateEmails){
-    const attempt=await sb.auth.signInWithPassword({
-      email,
-      password
-    });
+  const feedback = $("#materialDistributionFeedback");
 
-    if(!attempt.error){
-      result=attempt;
-      break;
+  if(feedback){
+    if(poolValue > 0){
+      feedback.innerHTML =
+        `Ainda existem peças disponíveis fora dos grupos. Valor restante: <strong>${poolValue}</strong>.`;
+    }else{
+      feedback.innerHTML =
+        "Os grupos ainda não têm o mesmo valor. Revise a distribuição ou faça novas trocas.";
     }
-
-    result=attempt;
   }
 
-  if(result?.error){
-    console.error("Erro de login do aluno:",result.error);
-
-    return toast(
-      `Não foi possível entrar (${result.error.code||"auth"}). Confira código da turma, número da chamada e senha.`,
-      "error",
-      7000
-    );
-  }
-
-  state.session=result.data.session;
-  await routeAuthenticatedUser();
+  toast("A distribuição ainda precisa ser ajustada.","error");
 }
-
-async function studentRegister(e){e.preventDefault();const classCode=normalizeClassCode($("#studentRegisterClassCode").value),parsed=parseStudentName($("#studentRegisterName").value),password=$("#studentRegisterPassword").value,password2=$("#studentRegisterPassword2").value;if(!parsed.valid)return toast(parsed.message,"error",5500);if(password!==password2)return toast("As senhas não coincidem.","error");let lookup;try{lookup=await resilientRpc("lookup_class_by_code",{p_code:classCode},null);}catch(error){console.error("Erro ao localizar turma:",error);return toast(`Não foi possível consultar a turma: ${error.message}`,"error",8000);}if(!Array.isArray(lookup)||!lookup.length)return toast("Código de turma não encontrado.","error");const{data,error}=await sb.auth.signUp({
-    email:studentEmail(classCode,parsed.rosterText),
-    password
-  });
-  if(error){
-    console.error("Erro Supabase Auth ao criar aluno:",error);
-
-    const duplicateCodes=["user_already_exists","email_exists"];
-    const duplicateMessage=String(error.message||"").toLowerCase().includes("already");
-
-    if(duplicateCodes.includes(error.code)||duplicateMessage){
-      return toast(`O número ${parsed.rosterText} já possui acesso nesta turma.`,"error",6000);
-    }
-
-    return toast(`Falha no cadastro (${error.code||"sem código"}): ${error.message}`,"error",7000);
-  }
-  if(!data.session){
-    return toast(
-      "A conta foi criada, mas a sessão não iniciou. Confirme se 'Confirm Email' está desativado no Supabase.",
-      "error",
-      7000
-    );
-  }
-  state.session=data.session;
-  /* Sem mudar o SQL: username = número da chamada. A restrição unique(class_id,username) impede número repetido. */
-  const{error:pErr}=await sb.rpc("create_my_student_profile",{p_name:parsed.fullName,p_username:parsed.rosterText,p_class_code:classCode});if(pErr){toast(pErr.message,"error",6000);await sb.auth.signOut();state.session=null;return;}toast("Acesso do aluno criado com sucesso.","success");await routeAuthenticatedUser();}
-
-/* ---------- SEGURANÇA PROFESSOR ---------- */
-async function submitAdminGate(e){e.preventDefault();const{data,error}=await sb.rpc("can_open_my_admin_area",{p_key:$("#adminGateKey").value});if(error)return toast(error.message,"error");if(!data)return toast("Chave pessoal inválida.","error");$("#adminGateModal").classList.add("hidden");await showProfessorHome();}
-async function showProfessorProfile(){showScreen("screenProfessorProfile");const p=state.professor;$("#profileInfo").innerHTML=`<div class="profile-row"><small>Nome</small><strong>${esc(p?.name||"—")}</strong></div><div class="profile-row"><small>Usuário</small><strong>${esc(p?.username||"—")}</strong></div><div class="profile-row"><small>Perfil</small><strong>Professor</strong></div>`;const{data,error}=await sb.rpc("get_my_security_settings");if(!error){const row=Array.isArray(data)?data[0]:data;$("#requireAdminKeyToggle").checked=Boolean(row?.require_admin_key);}}
-async function changeMyAccessKey(e){e.preventDefault();const{error}=await sb.rpc("change_my_access_key",{p_new_key:$("#newAccessKey").value,p_confirm_key:$("#confirmAccessKey").value});if(error)return toast(error.message,"error",6000);e.target.reset();toast("Sua chave pessoal foi alterada.","success");}
-async function setAdminKeyRequired(){const required=$("#requireAdminKeyToggle").checked;const{error}=await sb.rpc("set_my_admin_key_required",{p_required:required});if(error){$("#requireAdminKeyToggle").checked=!required;return toast(error.message,"error");}toast(required?"A chave pessoal será exigida na entrada administrativa.":"A chave pessoal não será exigida na entrada administrativa.","success");}
-
-/* ---------- DADOS DE REFERÊNCIA ---------- */
-async function loadReferenceData(){const[a,c,m,l,t,tr]=await Promise.all([sb.from("areas").select("*").eq("is_active",true).order("sort_order"),sb.from("components").select("*").eq("is_active",true).order("sort_order"),sb.from("modules").select("*").eq("is_active",true).order("sort_order"),sb.from("education_levels").select("*").eq("is_active",true).order("sort_order"),sb.from("activity_types").select("*").eq("is_active",true).order("name"),sb.from("transversal_themes").select("*").eq("is_active",true).order("name")]);state.areas=a.data||[];state.components=c.data||[];state.modules=m.data||[];state.levels=l.data||[];state.activityTypes=t.data||[];state.transversalThemes=tr.data||[];}
-
-/* ---------- STREAMING ---------- */
-async function showProfessorHome(){if(!state.professor)return;$("#professorWelcome").textContent=`Olá, ${state.professor.name}.`;renderStreamingRows();setTopbar(true,"professor");showScreen("screenProfessorHome");}
-function renderStreamingRows(){const c=$("#streamingRows");c.innerHTML="";STREAMING_ROWS.forEach(row=>{const sec=document.createElement("section");sec.className="stream-row";sec.innerHTML=`<div class="stream-row-heading"><h2>${esc(row.title)}</h2></div><div class="cover-grid"></div>`;const grid=$(".cover-grid",sec);row.items.forEach(item=>{const b=document.createElement("button");b.className="cover-card";b.type="button";b.innerHTML=`<img src="${esc(item.image)}" alt="${esc(item.title)}"><div class="cover-overlay"><strong>${esc(item.title)}</strong><small>${esc(item.subtitle||"")}</small></div>`;const img=$("img",b);img.addEventListener("error",()=>{img.style.display="none";b.style.background="radial-gradient(circle at 20% 20%,rgba(44,168,255,.24),transparent 35%),linear-gradient(135deg,#17314b,#07111f)";});b.addEventListener("click",()=>openWorkspace(item));grid.appendChild(b);});c.appendChild(sec);});}
-async function openWorkspace(context){state.currentContext={...context};$("#workspaceTitle").textContent=context.title;$("#workspaceEyebrow").textContent=context.mode==="transversal"?"TEMAS TRANSVERSAIS":"ÁREA DE TRABALHO";$("#workspaceSubtitle").textContent=context.subtitle||"";setWorkspaceTab("overview");showScreen("screenWorkspace");await Promise.all([loadClasses(),prepareActivityForm(),loadActivities()]);}
-function setWorkspaceTab(tab){$$('.workspace-tab').forEach(b=>b.classList.toggle('active',b.dataset.workTab===tab));$$('.workspace-panel').forEach(p=>p.classList.remove('active'));const map={overview:'#workOverview',classes:'#workClasses',activities:'#workActivities',upload:'#workUpload',reports:'#workReports'};$(map[tab])?.classList.add('active');if(tab==='classes')loadClasses();if(tab==='activities')loadActivities();if(tab==='upload')prepareActivityForm();if(tab==='reports')prepareReports();}
-
-/* ---------- TURMAS ---------- */
-async function loadClasses(){if(!state.professor)return;const{data,error}=await sb.from("classes").select(`*,class_levels(level_id,education_levels(id,code,name,sort_order))`).eq("professor_id",state.professor.id).order("name");if(error)return toast(error.message,"error");state.classes=data||[];renderClassList();populateClassSelects();}
-function renderClassList(){const list=$("#classList");if(!list)return;if(!state.classes.length){list.innerHTML='<div class="list-card"><p>Nenhuma turma cadastrada.</p></div>';return;}list.innerHTML=state.classes.map(x=>{const levels=(x.class_levels||[]).map(y=>y.education_levels?.code).filter(Boolean).sort().join(', ');return`<article class="list-card"><div class="list-card-top"><div><h3>${esc(x.name)}</h3><p>${esc(x.grade||'Etapa não informada')} • ${esc(x.school_year||'—')}</p></div><span class="badge">${esc(x.code)}</span></div><div class="badge-row"><span class="badge">Níveis: ${esc(levels||'nenhum')}</span></div><div class="card-actions"><button class="btn btn-small btn-outline" type="button" data-edit-class="${x.id}">EDITAR TURMA</button></div></article>`;}).join('');$$('[data-edit-class]',list).forEach(b=>b.addEventListener('click',()=>editClass(b.dataset.editClass)));}
-function populateClassSelects(){[$("#activityAssignClass"),$("#uploadAssignClass"),$("#reportClassSelect")].filter(Boolean).forEach(select=>{const current=select.value;let html=select.id==='reportClassSelect'?'<option value="">Selecione uma turma</option>':`<option value="">${select.id==='uploadAssignClass'?'Somente banco do professor':'Não liberar agora'}</option>`;html+=state.classes.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');select.innerHTML=html;if(current&&state.classes.some(x=>x.id===current))select.value=current;});}
-async function saveClass(e){e.preventDefault();const editId=$("#classEditId").value,name=$("#className").value.trim(),grade=$("#classGrade").value.trim(),school_year=Number($("#classYear").value)||null,code=normalizeClassCode($("#classCode").value),description=$("#classDescription").value.trim(),levelCodes=$$('input[name="classLevel"]:checked').map(i=>i.value);if(!levelCodes.length)return toast("Selecione pelo menos um nível.","error");let classId=editId||null;if(editId){const{error}=await sb.from('classes').update({name,grade:grade||null,school_year,code,description:description||null}).eq('id',editId);if(error)return toast(error.message,'error',6000);}else{const{data,error}=await sb.from('classes').insert({professor_id:state.professor.id,name,grade:grade||null,school_year,code,description:description||null}).select('id').single();if(error)return toast(error.message,'error',6000);classId=data.id;}const selected=state.levels.filter(l=>levelCodes.includes(l.code));const{error:dErr}=await sb.from('class_levels').delete().eq('class_id',classId);if(dErr)return toast(dErr.message,'error');const{error:lErr}=await sb.from('class_levels').insert(selected.map(l=>({class_id:classId,level_id:l.id})));if(lErr)return toast(lErr.message,'error');resetClassForm();await loadClasses();toast(editId?'Turma atualizada.':'Turma cadastrada.','success');}
-function editClass(id){const x=state.classes.find(c=>c.id===id);if(!x)return;$("#classEditId").value=x.id;$("#className").value=x.name||'';$("#classGrade").value=x.grade||'';$("#classYear").value=x.school_year||'';$("#classCode").value=x.code||'';$("#classDescription").value=x.description||'';const codes=(x.class_levels||[]).map(y=>y.education_levels?.code).filter(Boolean);$$('input[name="classLevel"]').forEach(i=>i.checked=codes.includes(i.value));$("#classFormTitle").textContent='Editar turma';$("#cancelClassEditBtn").classList.remove('hidden');setWorkspaceTab('classes');}
-function resetClassForm(){$("#classForm").reset();$("#classEditId").value='';$("#classFormTitle").textContent='Cadastrar turma';$("#cancelClassEditBtn").classList.add('hidden');$("#classYear").value=new Date().getFullYear();$("#classCode").value=makeRandomClassCode();}
-
-/* ---------- FORMULÁRIO ATIVIDADES ---------- */
-async function prepareActivityForm(){if(!state.currentContext)return;if(!state.areas.length)await loadReferenceData();const ctx=state.currentContext,area=ctx.area?findArea(ctx.area):null;let comps=area?state.components.filter(x=>x.area_id===area.id):state.components;if(ctx.component&&area)comps=comps.filter(x=>x.slug===ctx.component);$("#activityComponent").innerHTML='<option value="">Selecione</option>'+comps.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');if(ctx.component&&area){const c=findComponent(ctx.component,area.id);if(c)$("#activityComponent").value=c.id;}fillModulesForSelectedComponent();if(ctx.module&&$("#activityComponent").value){const m=findModule(ctx.module,$("#activityComponent").value);if(m)$("#activityModule").value=m.id;}$("#activityLevel").innerHTML='<option value="">Sem nível específico</option>'+state.levels.map(x=>`<option value="${x.id}">${esc(x.name)} — ${esc(x.description||'')}</option>`).join('');$("#activityType").innerHTML=state.activityTypes.map(x=>`<option value="${x.id}" data-code="${esc(x.code)}">${esc(x.name)}</option>`).join('');const preferred=state.activityTypes.find(t=>ctx.mode==='module'&&['adicao','subtracao','multiplicacao','divisao'].includes(ctx.module)?t.code==='interactive':t.code==='problem_situation');if(preferred)$("#activityType").value=preferred.id;$("#activityTransversalTheme").innerHTML='<option value="">Nenhum</option>'+state.transversalThemes.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');$("#activityContextSummary").innerHTML=`<strong>${esc(ctx.title)}</strong><br><span>${ctx.mode==='transversal'?'Escolha uma área/componente e um tema transversal.':'A atividade será vinculada ao contexto desta capa.'}</span>`;updateMathFieldsVisibility();populateClassSelects();}
-function fillModulesForSelectedComponent(){const componentId=$("#activityComponent").value,ctx=state.currentContext;let mods=state.modules.filter(x=>x.component_id===componentId);if(ctx?.module&&ctx?.component)mods=mods.filter(x=>x.slug===ctx.module);$("#activityModule").innerHTML='<option value="">Sem módulo específico</option>'+mods.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');updateMathFieldsVisibility();}
-function updateMathFieldsVisibility(){const m=state.modules.find(x=>x.id===$("#activityModule").value);$("#mathFields").classList.toggle('hidden',!(m&&['adicao','subtracao','multiplicacao','divisao','educacao-financeira'].includes(m.slug)));}
-async function createActivity(e){e.preventDefault();const ctx=state.currentContext,area=ctx?.area?findArea(ctx.area):null;let areaId=area?.id||null,componentId=$("#activityComponent").value||null,moduleId=$("#activityModule").value||null;if(!areaId&&componentId)areaId=state.components.find(x=>x.id===componentId)?.area_id||null;if(!areaId)return toast('Selecione um componente associado a uma área.','error');const levelId=$("#activityLevel").value||null,typeId=$("#activityType").value,mode=$("#activityCorrectionMode").value,title=$("#activityTitle").value.trim(),statement=$("#activityStatement").value.trim(),question=$("#activityQuestion").value.trim(),answer=$("#activityAnswer").value.trim(),a=$("#activityOperandA").value,b=$("#activityOperandB").value,unit=$("#activityUnit").value.trim(),mod=state.modules.find(x=>x.id===moduleId),op=operationFromModuleSlug(mod?.slug),content={};if(op){content.operation=op;content.material_dourado=true;content.unit=unit||'';if(op==='division'){content.dividend=Number(a);content.divisor=Number(b);content.exact_division=true;}else{content.operand_a=Number(a);content.operand_b=Number(b);}}if(mod?.slug==='educacao-financeira'){content.context='financial_education';if(a!=='')content.operand_a=Number(a);if(b!=='')content.operand_b=Number(b);content.unit=unit||'BRL';}let answerKey={};if(answer){const n=Number(answer.replace(',','.'));answerKey=Number.isNaN(n)?{type:'text',accepted:[answer],case_sensitive:false}:{type:'number',value:n,tolerance:0};}const{data,error}=await sb.from('activities').insert({source_type:'professor',created_by:state.professor.id,area_id:areaId,component_id:componentId,module_id:moduleId,level_id:levelId,activity_type_id:typeId,title,statement,question:question||null,correction_mode:mode,content,answer_key:answerKey,metadata:{project_version:'7.0'}}).select('id').single();if(error)return toast(error.message,'error',6000);const themeId=$("#activityTransversalTheme").value;if(themeId)await sb.from('activity_transversal_themes').insert({activity_id:data.id,transversal_theme_id:themeId});const classId=$("#activityAssignClass").value;if(classId)await assignActivityToClass(data.id,classId,false);$("#activityForm").reset();await prepareActivityForm();toast('Atividade cadastrada.','success');await loadActivities();}
-
-/* ---------- BANCO DE ATIVIDADES ---------- */
-async function loadActivities(){if(!state.professor||!state.currentContext)return;const{data,error}=await sb.from('activities').select(`id,source_type,created_by,area_id,component_id,module_id,level_id,activity_type_id,title,statement,question,correction_mode,content,metadata,is_active,areas(id,name,slug),components(id,name,slug),modules(id,name,slug),education_levels(id,code,name),activity_types(id,code,name),activity_transversal_themes(transversal_theme_id,transversal_themes(id,name,slug))`).eq('is_active',true).order('created_at',{ascending:false});if(error)return toast(error.message,'error');renderActivityList(filterActivitiesForContext(data||[]));}
-function filterActivitiesForContext(items){const c=state.currentContext;if(!c)return items;if(c.mode==='transversal')return items.filter(x=>x.activity_transversal_themes?.length);return items.filter(x=>(!c.area||x.areas?.slug===c.area)&&(!c.component||x.components?.slug===c.component)&&(!c.module||x.modules?.slug===c.module));}
-function renderActivityList(items){const list=$("#activityList");if(!items.length){list.innerHTML='<article class="activity-card"><p>Nenhuma atividade encontrada neste contexto.</p></article>';return;}list.innerHTML=items.map(x=>{const themes=(x.activity_transversal_themes||[]).map(y=>y.transversal_themes?.name).filter(Boolean);return`<article class="activity-card"><div class="activity-card-top"><div><h3>${esc(x.title)}</h3><p>${esc(x.statement)}</p></div><span class="badge">${x.source_type==='system'?'Sistema':'Professor'}</span></div><div class="badge-row"><span class="badge">${esc(x.areas?.name||'—')}</span>${x.components?.name?`<span class="badge">${esc(x.components.name)}</span>`:''}${x.modules?.name?`<span class="badge">${esc(x.modules.name)}</span>`:''}${x.education_levels?.code?`<span class="badge">${esc(x.education_levels.code)}</span>`:''}${themes.map(t=>`<span class="badge">${esc(t)}</span>`).join('')}</div><div class="assignment-row"><select data-assign-select="${x.id}"><option value="">Escolha a turma</option>${state.classes.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select><button class="btn btn-small btn-primary" type="button" data-assign-activity="${x.id}">LIBERAR</button></div></article>`;}).join('');$$('[data-assign-activity]',list).forEach(b=>b.addEventListener('click',async()=>{const id=b.dataset.assignActivity,classId=$(`[data-assign-select="${id}"]`,list).value;if(!classId)return toast('Escolha uma turma.','error');await assignActivityToClass(id,classId);}));}
-async function assignActivityToClass(activityId,classId,notify=true){const{error}=await sb.from('class_activities').upsert({class_id:classId,activity_id:activityId,assigned_by:state.professor.id,is_active:true},{onConflict:'class_id,activity_id'});if(error){toast(error.message,'error',6000);return false;}if(notify)toast('Atividade liberada para a turma.','success');return true;}
-
-/* ---------- UPLOAD ---------- */
-function normalizeHeaderKey(v){return String(v??'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'_');}
-function rowValue(row,...keys){const n={};Object.entries(row||{}).forEach(([k,v])=>n[normalizeHeaderKey(k)]=v);for(const k of keys)if(n[normalizeHeaderKey(k)]!==undefined)return n[normalizeHeaderKey(k)];return'';}
-async function processActivityFile(){const file=$("#activityFile").files?.[0];if(!file)return toast('Selecione um arquivo.','error');const ext=file.name.split('.').pop().toLowerCase();let rows=[];try{if(ext==='csv'){const text=await file.text(),wb=XLSX.read(text,{type:'string',raw:false}),sh=wb.Sheets[wb.SheetNames[0]];rows=XLSX.utils.sheet_to_json(sh,{defval:''});}else if(['xlsx','xls'].includes(ext)){const buf=await file.arrayBuffer(),wb=XLSX.read(buf,{type:'array'}),sh=wb.Sheets[wb.SheetNames[0]];rows=XLSX.utils.sheet_to_json(sh,{defval:''});}else if(ext==='docx'){const buf=await file.arrayBuffer(),res=await mammoth.extractRawText({arrayBuffer:buf});rows=res.value.replace(/\r/g,'').split(/(?=ATIVIDADE\s+\d+)/gi).map(x=>x.trim()).filter(Boolean).map(block=>{const o={};block.split('\n').forEach(line=>{const m=line.match(/^([^:]+):\s*(.*)$/);if(m)o[m[1].trim()]=m[2].trim();});return o;});}else throw new Error('Formato não suportado.');}catch(err){return toast(err.message,'error',6000);}if(!rows.length)return toast('Nenhuma atividade foi identificada.','error');const result=await importActivityRows(rows,$("#uploadAssignClass").value||null);$("#uploadResult").innerHTML=`<strong>Importação concluída</strong><p>Criadas: ${result.created}<br>Ignoradas/erro: ${result.failed}</p>`;await loadActivities();}
-async function importActivityRows(rows,assignClassId){let created=0,failed=0;for(const row of rows){try{const title=String(rowValue(row,'titulo','título','title')).trim(),statement=String(rowValue(row,'enunciado','statement')).trim(),question=String(rowValue(row,'pergunta','question')).trim(),answer=String(rowValue(row,'resposta','answer')).trim(),levelCode=String(rowValue(row,'nivel','nível','level')).trim().toUpperCase(),typeCode=String(rowValue(row,'tipo','type')).trim(),a=rowValue(row,'operando_a','valor_a','dividendo'),b=rowValue(row,'operando_b','valor_b','divisor'),unit=String(rowValue(row,'unidade','unit')).trim();if(!title||!statement){failed++;continue;}const ctx=state.currentContext||{},area=ctx.area?findArea(ctx.area):null;let comp=ctx.component&&area?findComponent(ctx.component,area.id):null;if(!comp&&area)comp=state.components.find(x=>x.area_id===area.id)||null;const mod=ctx.module&&comp?findModule(ctx.module,comp.id):null,level=state.levels.find(x=>x.code.toUpperCase()===levelCode)||null,type=state.activityTypes.find(x=>x.code===typeCode||x.name.toLowerCase()===typeCode.toLowerCase())||state.activityTypes.find(x=>mod?.slug&&['adicao','subtracao','multiplicacao','divisao'].includes(mod.slug)?x.code==='interactive':x.code==='problem_situation');if(!area||!type){failed++;continue;}const op=operationFromModuleSlug(mod?.slug),content={};if(op){content.operation=op;content.material_dourado=true;content.unit=unit;if(op==='division'){content.dividend=Number(a);content.divisor=Number(b);content.exact_division=true;}else{content.operand_a=Number(a);content.operand_b=Number(b);}}let answerKey={};if(answer!==''){const n=Number(answer.replace(',','.'));answerKey=Number.isNaN(n)?{type:'text',accepted:[answer],case_sensitive:false}:{type:'number',value:n,tolerance:0};}const{data,error}=await sb.from('activities').insert({source_type:'professor',created_by:state.professor.id,area_id:area.id,component_id:comp?.id||null,module_id:mod?.id||null,level_id:level?.id||null,activity_type_id:type.id,title,statement,question:question||null,correction_mode:answer!==''?'automatic':'teacher',content,answer_key:answerKey,metadata:{project_version:'7.0',imported_from:'file'}}).select('id').single();if(error){failed++;continue;}if(assignClassId)await assignActivityToClass(data.id,assignClassId,false);created++;}catch{failed++;}}return{created,failed};}
-
-/* ---------- RELATÓRIOS ---------- */
-async function prepareReports(){populateClassSelects();const s=$("#reportClassSelect");if(!s.value&&state.classes.length)s.value=state.classes[0].id;if(s.value)await loadParticipationReport();else $("#reportTableWrap").innerHTML='<p>Cadastre uma turma para visualizar relatórios.</p>';}
-async function loadParticipationReport(){const classId=$("#reportClassSelect").value;if(!classId){$("#reportTableWrap").innerHTML='<p>Selecione uma turma.</p>';return;}const[st,sub]=await Promise.all([sb.from('students').select('*').eq('class_id',classId),sb.from('submissions').select(`*,activities(id,title,modules(name,slug),areas(name,slug))`).eq('class_id',classId)]);if(st.error)return toast(st.error.message,'error');if(sub.error)return toast(sub.error.message,'error');state.reportStudents=st.data||[];state.reportSubmissions=sub.data||[];buildReportRows();renderReport();subscribeReportRealtime(classId);}
-function buildReportRows(){state.reportRows=state.reportStudents.map(student=>{const subs=state.reportSubmissions.filter(s=>s.student_id===student.id),parsed=parseStudentName(student.name),accessed=subs.length,resolved=subs.filter(s=>s.status==='resolved').length,firstAccess=subs.length?subs.map(s=>s.accessed_at).filter(Boolean).sort()[0]:null,lastActivity=subs.length?subs.map(s=>s.updated_at).filter(Boolean).sort().at(-1):null,duration=subs.reduce((sum,s)=>sum+getActiveSecondsFromDraft(s.draft),0);return{student,roster:parsed.valid?parsed.roster:Number(student.username)||999,rosterText:parsed.valid?parsed.rosterText:String(student.username||'').padStart(2,'0'),plainName:parsed.valid?parsed.plainName:student.name,accessed,resolved,firstAccess,lastActivity,duration,submissions:subs};});}
-function sortedReportRows(){const mode=$("#reportSort").value,rows=[...state.reportRows];if(mode==='recent')rows.sort((a,b)=>new Date(b.lastActivity||0)-new Date(a.lastActivity||0));else if(mode==='oldest')rows.sort((a,b)=>{if(!a.firstAccess&&!b.firstAccess)return a.roster-b.roster;if(!a.firstAccess)return 1;if(!b.firstAccess)return-1;return new Date(a.firstAccess)-new Date(b.firstAccess);});else if(mode==='duration')rows.sort((a,b)=>b.duration-a.duration||a.roster-b.roster);else rows.sort((a,b)=>a.roster-b.roster||a.plainName.localeCompare(b.plainName,'pt-BR'));return rows;}
-function renderReport(){const rows=sortedReportRows();if(!rows.length){$("#reportTableWrap").innerHTML='<p>Nenhum aluno cadastrado nesta turma.</p>';return;}$("#reportTableWrap").innerHTML=`<table class="report-table"><thead><tr><th>Nº</th><th>Aluno</th><th>Primeiro acesso</th><th>Última atividade</th><th>Tempo nos exercícios</th><th>Acessadas</th><th>Resolvidas</th><th></th></tr></thead><tbody>${rows.map(r=>`<tr><td class="roster-cell">${esc(r.rosterText)}</td><td><strong>${esc(r.plainName)}</strong></td><td>${esc(formatDateTime(r.firstAccess))}</td><td>${esc(formatDateTime(r.lastActivity))}</td><td>${esc(formatDuration(r.duration))}</td><td>${r.accessed}</td><td><span class="${r.resolved?'status-ok':'status-warn'}">${r.resolved}</span></td><td><button class="btn btn-small btn-outline" type="button" data-student-detail="${r.student.id}">DETALHES</button></td></tr>`).join('')}</tbody></table>`;$$('[data-student-detail]').forEach(b=>b.addEventListener('click',()=>openStudentDetails(b.dataset.studentDetail)));}
-function openStudentDetails(id){const r=state.reportRows.find(x=>x.student.id===id);if(!r)return;$("#studentDetailsTitle").textContent=`${r.rosterText}. ${r.plainName}`;const ordered=[...r.submissions].sort((a,b)=>new Date(a.accessed_at)-new Date(b.accessed_at));$("#studentDetailsBody").innerHTML=ordered.length?ordered.map(s=>`<article class="detail-activity"><h4>${esc(s.activities?.title||'Atividade')}</h4><p>${esc(s.activities?.areas?.name||'')}${s.activities?.modules?.name?' • '+esc(s.activities.modules.name):''}</p><p><strong>Acesso:</strong> ${esc(formatDateTime(s.accessed_at))}</p><p><strong>Tempo ativo:</strong> ${esc(formatDuration(getActiveSecondsFromDraft(s.draft)))}</p><p><strong>Tentativas:</strong> ${s.attempts||0} • <strong>Status:</strong> ${esc(s.status||'—')}</p></article>`).join(''):'<p>Nenhuma atividade acessada.</p>';$("#studentDetailsModal").classList.remove('hidden');}
-async function subscribeReportRealtime(classId){if(state.realtimeChannel)await sb.removeChannel(state.realtimeChannel);state.realtimeChannel=sb.channel(`class-${classId}-v7`).on('postgres_changes',{event:'*',schema:'public',table:'submissions',filter:`class_id=eq.${classId}`},async()=>{if($("#workReports").classList.contains('active'))await loadParticipationReport();}).subscribe();}
-function downloadReportHtml(){const classId=$("#reportClassSelect").value,c=state.classes.find(x=>x.id===classId);if(!c)return toast('Selecione uma turma.','error');const rows=sortedReportRows(),html=`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>Relatório</title><style>body{font-family:Arial;padding:30px;color:#111}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{border:1px solid #ccc;padding:8px;text-align:left}th{background:#eee}</style><body><h1>Relatório de Participação</h1><p>${esc(c.name)} • Projeto Educacional 7.0</p><table><thead><tr><th>Nº</th><th>Aluno</th><th>Primeiro acesso</th><th>Última atividade</th><th>Tempo nos exercícios</th><th>Acessadas</th><th>Resolvidas</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.rosterText)}</td><td>${esc(r.plainName)}</td><td>${esc(formatDateTime(r.firstAccess))}</td><td>${esc(formatDateTime(r.lastActivity))}</td><td>${esc(formatDuration(r.duration))}</td><td>${r.accessed}</td><td>${r.resolved}</td></tr>`).join('')}</tbody></table></body></html>`;const blob=new Blob([html],{type:'text/html;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`relatorio_${normalizeClassCode(c.name)}.html`;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);}
-
-/* ---------- ALUNO ---------- */
-async function showStudentDashboard(){stopActivityTimer(true);if(!state.student)return;$("#studentWelcome").textContent=`Olá, ${studentPlainName(state.student.name)}.`;$("#studentClassInfo").textContent=state.currentClass?`${state.currentClass.name} • Código ${state.currentClass.code}`:'';const{data,error}=await sb.rpc('get_my_class_activities',{p_level_code:null,p_area_slug:null});if(error)return toast(error.message,'error');renderStudentActivities(data||[]);setTopbar(true,'student');showScreen('screenStudentDashboard');}
-function renderStudentActivities(items){const c=$("#studentActivityGroups");if(!items.length){c.innerHTML='<div class="panel-card"><h2>Nenhuma atividade liberada ainda.</h2><p class="muted">Quando o professor liberar atividades para sua turma, elas aparecerão aqui.</p></div>';return;}const groups=new Map();items.forEach(i=>{const k=`${i.area_name||'Área'} • ${i.module_name||i.component_name||'Atividades'}`;if(!groups.has(k))groups.set(k,[]);groups.get(k).push(i);});c.innerHTML=[...groups.entries()].map(([title,list])=>`<section class="student-group"><h2>${esc(title)}</h2><div class="student-activity-grid">${list.map(i=>`<button class="student-activity-card" type="button" data-student-activity="${i.class_activity_id}"><span class="eyebrow">${esc(i.level_code||'')}</span><h3>${esc(i.title)}</h3><p>${esc(i.statement)}</p><div class="badge-row"><span class="badge">${i.progress_status==='resolved'?'Resolvida':i.progress_status==='not_accessed'?'Não acessada':'Em andamento'}</span><span class="badge">Tentativas: ${i.attempts||0}</span></div></button>`).join('')}</div></section>`).join('');$$('[data-student-activity]').forEach(b=>b.addEventListener('click',()=>{const item=items.find(x=>x.class_activity_id===b.dataset.studentActivity);if(item)openStudentActivity(item);}));}
-async function openStudentActivity(item){state.currentActivity=item;state.currentClassActivity=item.class_activity_id;const{error}=await sb.rpc('open_activity',{p_class_activity_id:item.class_activity_id});if(error)return toast(error.message,'error');const{data:sub}=await sb.from('submissions').select('*').eq('class_activity_id',item.class_activity_id).eq('student_id',state.student.id).maybeSingle();state.currentDraft=sub?.draft&&typeof sub.draft==='object'?sub.draft:{};state.activeSeconds=getActiveSecondsFromDraft(state.currentDraft);$("#studentActivityMeta").textContent=[item.area_name,item.module_name,item.level_code].filter(Boolean).join(' • ');$("#studentActivityTitle").textContent=item.title;$("#studentActivityStatement").textContent=item.statement||'';$("#studentActivityQuestion").textContent=item.question||'';$("#studentScratch").value=state.currentDraft.studentScratch||'';renderStudentAnswerArea(item);renderInteractiveArea(item);showScreen('screenStudentActivity');startActivityTimer();$("#studentScratch").oninput=debounce(saveCurrentDraft,700);}
-function markInteraction(){state.lastInteraction=Date.now();}
-function startActivityTimer(){stopActivityTimer(false);state.lastTick=Date.now();state.lastInteraction=Date.now();$("#activityTimerDisplay").textContent=timerText(state.activeSeconds);state.timerHandle=setInterval(()=>{const now=Date.now(),active=!document.hidden&&(now-state.lastInteraction)<120000;if(active){const delta=Math.max(0,Math.min(2,Math.round((now-state.lastTick)/1000)));state.activeSeconds+=delta;$("#activityTimerDisplay").textContent=timerText(state.activeSeconds);}state.lastTick=now;},1000);state.timerHeartbeat=setInterval(()=>{if(!document.hidden)saveCurrentDraft();},15000);}
-function stopActivityTimer(save=true){if(state.timerHandle){clearInterval(state.timerHandle);state.timerHandle=null;}if(state.timerHeartbeat){clearInterval(state.timerHeartbeat);state.timerHeartbeat=null;}if(save&&state.currentClassActivity)saveCurrentDraft();state.lastTick=null;}
-async function saveCurrentDraft(){if(!state.currentClassActivity||state.role!=='student')return;state.currentDraft={...state.currentDraft,studentScratch:$("#studentScratch")?.value||'',_tracking:{...(state.currentDraft._tracking||{}),activeSeconds:state.activeSeconds,lastHeartbeat:new Date().toISOString(),projectVersion:'7.0'}};const{error}=await sb.rpc('save_my_draft',{p_class_activity_id:state.currentClassActivity,p_draft:state.currentDraft});if(error)console.error('Erro ao salvar rascunho:',error.message);}
-function renderStudentAnswerArea(item){const a=$("#studentAnswerArea");if(item.activity_type==='open_text'||item.correction_mode==='teacher'){a.innerHTML='<label>Resposta final<textarea id="studentFinalText" rows="5"></textarea></label><button id="submitStudentAnswerBtn" class="btn btn-primary" type="button">ENVIAR RESPOSTA</button>';$("#studentFinalText").value=state.currentDraft.finalText||'';}else{a.innerHTML='<div class="answer-actions"><label>Resposta final<input id="studentFinalAnswer" type="text" inputmode="decimal" placeholder="Digite sua resposta"></label><button id="submitStudentAnswerBtn" class="btn btn-primary" type="button">ENVIAR RESPOSTA</button></div>';$("#studentFinalAnswer").value=state.currentDraft.finalAnswer||'';}$("#submitStudentAnswerBtn").addEventListener('click',submitStudentAnswer);}
-async function submitStudentAnswer(){const ta=$("#studentFinalText"),inp=$("#studentFinalAnswer");let response;if(ta){const v=ta.value.trim();state.currentDraft.finalText=v;response={value:v};}else{const raw=inp?.value.trim()||'',n=Number(raw.replace(',','.'));state.currentDraft.finalAnswer=raw;response=Number.isNaN(n)?{value:raw}:{value:n};}await saveCurrentDraft();const{data,error}=await sb.rpc('submit_answer',{p_class_activity_id:state.currentClassActivity,p_response:response});if(error)return toast(error.message,'error',6000);const row=Array.isArray(data)?data[0]:data,fb=$("#studentAnswerFeedback");fb.classList.remove('hidden','correct','incorrect');if(row?.needs_review){fb.classList.add('correct');fb.textContent='Resposta enviada. O professor fará a avaliação.';}else if(row?.is_correct){fb.classList.add('correct');fb.textContent='Sua resposta está correta. Parabéns!';}else{fb.classList.add('incorrect');fb.textContent='Resposta incorreta. Revise sua estratégia e tente novamente.';}}
-
-/* ---------- MATERIAL DOURADO DIVISÃO ---------- */
-function renderInteractiveArea(item){const c=$("#interactiveArea"),content=item.content||{};if(content.operation==='division'&&content.material_dourado)return renderDivisionMaterialBoard(c,content);if(['addition','subtraction','multiplication'].includes(content.operation)){const sym={addition:'+',subtraction:'−',multiplication:'×'};c.innerHTML=`<div class="panel-card"><span class="eyebrow">OPERAÇÃO</span><h2 style="font-size:2.4rem;margin:10px 0">${esc(content.operand_a)} ${sym[content.operation]} ${esc(content.operand_b)}</h2><p class="muted">A resposta final é registrada online. A manipulação específica desta operação pode ser ampliada em versões futuras sem alterar o banco.</p></div>`;return;}c.innerHTML='';}
-function renderDivisionMaterialBoard(container,content){const dividend=Number(content.dividend),divisor=Number(content.divisor);if(!Number.isFinite(dividend)||!Number.isFinite(divisor)||divisor<=0){container.innerHTML='';return;}const board={confirmed:false,available:{M:0,C:0,D:0,U:0},groups:Array.from({length:divisor},()=>({M:0,C:0,D:0,U:0}))},vals={M:1000,C:100,D:10,U:1},labels={M:'Milhar',C:'Centena',D:'Dezena',U:'Unidade'},value=o=>Object.entries(o).reduce((s,[k,n])=>s+vals[k]*n,0);const render=()=>{container.innerHTML=`<div class="material-board"><section class="material-panel"><span class="eyebrow">MATERIAL DOURADO</span><h2>Represente ${dividend}</h2><div class="place-value-grid">${['M','C','D','U'].map(k=>`<div class="place-value"><strong>${labels[k]}</strong><span class="count">${board.available[k]}</span><div class="piece-controls"><button type="button" data-minus="${k}">−</button><button type="button" data-plus="${k}">+</button></div></div>`).join('')}</div><div class="material-status">Valor representado: <strong>${value(board.available)}</strong> • Valor necessário: <strong>${dividend}</strong></div><div class="card-actions"><button id="confirmRepresentationBtn" class="btn btn-primary" type="button">✓ CONFIRMAR REPRESENTAÇÃO</button><button id="resetMaterialBtn" class="btn btn-outline" type="button">Refazer representação</button></div></section>${board.confirmed?`<section class="material-panel"><span class="eyebrow">TROCAS</span><h3>Trocas disponíveis</h3><div class="exchange-row"><button data-ex="M-C">1 milhar → 10 centenas</button><button data-ex="C-D">1 centena → 10 dezenas</button><button data-ex="D-U">1 dezena → 10 unidades</button><button data-ex="U-D">10 unidades → 1 dezena</button></div><span class="eyebrow">CAIXAS DO DIVISOR</span><h3>Distribua igualmente entre ${divisor} grupos</h3><div class="groups-grid">${board.groups.map((g,i)=>`<article class="group-box"><h4>Grupo ${i+1}</h4><div class="group-value">Valor: ${value(g)}</div><p class="muted">M:${g.M} C:${g.C} D:${g.D} U:${g.U}</p><div class="distribution-buttons">${['M','C','D','U'].map(k=>`<button type="button" data-send="${k}" data-gi="${i}" ${board.available[k]<=0?'disabled':''}>+ ${k}</button>`).join('')}</div></article>`).join('')}</div><div class="card-actions"><button id="checkDistributionBtn" class="btn btn-primary" type="button">✓ CONFERIR O RESULTADO</button><button id="collectPiecesBtn" class="btn btn-outline" type="button">↺ Recolher todas as peças</button></div><div id="distributionFeedback" class="material-status">Distribua todas as peças igualmente.</div></section>`:''}</div>`;
-      $$('[data-plus]',container).forEach(b=>b.onclick=()=>{board.available[b.dataset.plus]++;board.confirmed=false;render();});$$('[data-minus]',container).forEach(b=>b.onclick=()=>{const k=b.dataset.minus;board.available[k]=Math.max(0,board.available[k]-1);board.confirmed=false;render();});$('#confirmRepresentationBtn',container)?.addEventListener('click',()=>{if(value(board.available)!==dividend)return toast('A representação ainda não corresponde ao dividendo.','error');board.confirmed=true;render();toast('Representação correta. Agora distribua as peças.','success');});$('#resetMaterialBtn',container)?.addEventListener('click',()=>{board.available={M:0,C:0,D:0,U:0};board.groups=Array.from({length:divisor},()=>({M:0,C:0,D:0,U:0}));board.confirmed=false;render();});$$('[data-ex]',container).forEach(b=>b.onclick=()=>{const a=b.dataset.ex;if(a==='M-C'&&board.available.M>=1){board.available.M--;board.available.C+=10;}else if(a==='C-D'&&board.available.C>=1){board.available.C--;board.available.D+=10;}else if(a==='D-U'&&board.available.D>=1){board.available.D--;board.available.U+=10;}else if(a==='U-D'&&board.available.U>=10){board.available.U-=10;board.available.D++;}else return toast('Não há peças suficientes para essa troca.','error');render();});$$('[data-send]',container).forEach(b=>b.onclick=()=>{const k=b.dataset.send,i=Number(b.dataset.gi);if(board.available[k]<=0)return;board.available[k]--;board.groups[i][k]++;render();});$('#collectPiecesBtn',container)?.addEventListener('click',()=>{board.groups.forEach(g=>['M','C','D','U'].forEach(k=>{board.available[k]+=g[k];g[k]=0;}));render();});$('#checkDistributionBtn',container)?.addEventListener('click',()=>{const quotient=dividend/divisor,ok=value(board.available)===0&&board.groups.every(g=>value(g)===quotient),fb=$('#distributionFeedback',container);fb.textContent=ok?`Distribuição correta. Cada grupo representa ${quotient}.`:'A distribuição ainda não está correta. Revise as trocas e os grupos.';toast(ok?'Distribuição correta. Parabéns!':'Revise a distribuição.',ok?'success':'error');});};render();}
-
-/* ---------- NAVEGAÇÃO/EVENTOS ---------- */
-function openAuthTab(role,tab){if(role==='professor'){$$('[data-prof-tab]').forEach(b=>b.classList.toggle('active',b.dataset.profTab===tab));$("#professorLoginForm").classList.toggle('hidden',tab!=='login');$("#professorRegisterForm").classList.toggle('hidden',tab!=='register');}else{$$('[data-student-tab]').forEach(b=>b.classList.toggle('active',b.dataset.studentTab===tab));$("#studentLoginForm").classList.toggle('hidden',tab!=='login');$("#studentRegisterForm").classList.toggle('hidden',tab!=='register');}}
 
 /* ============================================================
-   VISUALIZAR / OCULTAR SENHAS
+   RELATÓRIOS
    ============================================================ */
+function prepareReports(){
+  populateClassSelects();
 
-function setupPasswordToggles(){
-  $$("[data-password-toggle]").forEach(button=>{
-    if(button.dataset.bound==="true") return;
+  const select = $("#reportClassSelect");
 
-    const field=button.closest(".password-field");
-    const input=field?.querySelector('input[type="password"], input[type="text"]');
+  if(!select.value){
+    const classes = currentProfessorClasses();
+    if(classes.length) select.value = classes[0].id;
+  }
 
-    if(!input) return;
+  renderReport();
+}
 
-    button.dataset.bound="true";
+function buildReportRows(){
+  const classId = $("#reportClassSelect").value;
+  const data = loadData();
+  const students = data.students.filter(student => student.classId === classId);
 
-    button.addEventListener("click",()=>{
-      const showing=input.type==="text";
+  state.reportRows = students.map(student => {
+    const submissions = data.submissions.filter(s =>
+      s.studentId === student.id &&
+      s.classId === classId
+    );
 
-      input.type=showing ? "password" : "text";
-      button.textContent=showing ? "Mostrar" : "Ocultar";
-      button.setAttribute(
-        "aria-label",
-        showing ? "Mostrar senha" : "Ocultar senha"
-      );
-      button.setAttribute(
-        "title",
-        showing ? "Mostrar senha" : "Ocultar senha"
-      );
+    return {
+      student,
+      roster:student.roster,
+      rosterText:student.rosterText,
+      plainName:student.plainName,
+      firstAccess:student.firstAccess || submissions.map(s => s.accessedAt).filter(Boolean).sort()[0] || null,
+      lastAccess:student.lastAccess || submissions.map(s => s.updatedAt).filter(Boolean).sort().at(-1) || null,
+      duration:submissions.reduce((sum,s) => sum + Number(s.activeSeconds || 0),0),
+      accessed:submissions.length,
+      resolved:submissions.filter(s => s.resolved).length,
+      submissions
+    };
+  });
+}
+
+function sortedReportRows(){
+  buildReportRows();
+
+  const rows = [...state.reportRows];
+  const sort = $("#reportSort").value;
+
+  if(sort === "recent"){
+    rows.sort((a,b) => new Date(b.lastAccess || 0) - new Date(a.lastAccess || 0));
+  }else if(sort === "oldest"){
+    rows.sort((a,b) =>
+      new Date(a.firstAccess || "9999-12-31") -
+      new Date(b.firstAccess || "9999-12-31")
+    );
+  }else if(sort === "duration"){
+    rows.sort((a,b) => b.duration - a.duration || a.roster - b.roster);
+  }else{
+    rows.sort((a,b) => a.roster - b.roster);
+  }
+
+  return rows;
+}
+
+function renderReport(){
+  const classId = $("#reportClassSelect").value;
+  const wrap = $("#reportTableWrap");
+
+  if(!classId){
+    $("#reportMetrics").innerHTML = "";
+    wrap.innerHTML = emptyState(
+      "◎",
+      "Selecione uma turma",
+      "Escolha uma turma acima para visualizar participação, tempo e conclusões."
+    );
+    return;
+  }
+
+  const rows = sortedReportRows();
+
+  const studentsCount = rows.length;
+  const accessedCount = rows.filter(row => row.accessed > 0).length;
+  const completedStudents = rows.filter(row => row.resolved > 0).length;
+  const averageSeconds = studentsCount
+    ? Math.round(rows.reduce((sum,row) => sum + row.duration,0) / studentsCount)
+    : 0;
+
+  $("#reportMetrics").innerHTML = [
+    metricCard("Alunos",String(studentsCount),"cadastrados","blue"),
+    metricCard("Acessaram",String(accessedCount),"com participação registrada","green"),
+    metricCard("Concluíram",String(completedStudents),"ao menos uma atividade","gold"),
+    metricCard("Tempo médio",formatDuration(averageSeconds),"por aluno","violet")
+  ].join("");
+
+  if(!rows.length){
+    wrap.innerHTML = emptyState(
+      "○",
+      "Nenhum aluno cadastrado",
+      "Cadastre alunos nesta turma para começar a acompanhar a participação."
+    );
+    return;
+  }
+
+  wrap.innerHTML = `
+    <table class="report-table">
+      <thead>
+        <tr>
+          <th>Nº</th>
+          <th>Aluno</th>
+          <th>Primeiro acesso</th>
+          <th>Último acesso</th>
+          <th>Tempo nos exercícios</th>
+          <th>Acessadas</th>
+          <th>Resolvidas</th>
+          <th></th>
+        </tr>
+      </thead>
+
+      <tbody>
+        ${rows.map(row => `
+          <tr>
+            <td class="roster-cell">${escapeHtml(row.rosterText)}</td>
+            <td><strong>${escapeHtml(row.plainName)}</strong></td>
+            <td>${escapeHtml(formatDateTime(row.firstAccess))}</td>
+            <td>${escapeHtml(formatDateTime(row.lastAccess))}</td>
+            <td>${escapeHtml(formatDuration(row.duration))}</td>
+            <td>${row.accessed}</td>
+            <td><span class="${row.resolved ? "status-ok" : "status-warn"}">${row.resolved}</span></td>
+            <td>
+              <button class="btn btn-small btn-outline" type="button" data-student-detail="${row.student.id}">
+                DETALHES
+              </button>
+            </td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+
+  $$("[data-student-detail]",wrap).forEach(button => {
+    button.addEventListener("click",() => openStudentDetails(button.dataset.studentDetail));
+  });
+}
+
+function openStudentDetails(studentId){
+  buildReportRows();
+
+  const row = state.reportRows.find(item => item.student.id === studentId);
+  if(!row) return;
+
+  const data = loadData();
+
+  $("#studentDetailsTitle").textContent = `${row.rosterText}. ${row.plainName}`;
+
+  $("#studentDetailsBody").innerHTML = row.submissions.length
+    ? row.submissions.map(submission => {
+        const activity = data.activities.find(a => a.id === submission.activityId);
+
+        return `
+          <article class="detail-activity">
+            <h4>${escapeHtml(activity?.title || "Atividade")}</h4>
+            <p><strong>Acesso:</strong> ${escapeHtml(formatDateTime(submission.accessedAt))}</p>
+            <p><strong>Tempo ativo:</strong> ${escapeHtml(formatDuration(submission.activeSeconds))}</p>
+            <p><strong>Tentativas:</strong> ${submission.attempts || 0} • <strong>Status:</strong> ${submission.resolved ? "Resolvida" : "Em andamento"}</p>
+          </article>
+        `;
+      }).join("")
+    : "<p>Nenhuma atividade acessada.</p>";
+
+  $("#studentDetailsModal").classList.remove("hidden");
+}
+
+function downloadReportHtml(){
+  const classId = $("#reportClassSelect").value;
+  const classItem = currentProfessorClasses().find(c => c.id === classId);
+
+  if(!classItem) return toast("Selecione uma turma.","error");
+
+  const rows = sortedReportRows();
+
+  const reportHtml = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Relatório - ${escapeHtml(classItem.name)}</title>
+<style>
+body{font-family:Arial,sans-serif;padding:30px;color:#111}
+table{width:100%;border-collapse:collapse;margin-top:24px}
+th,td{border:1px solid #ccc;padding:8px;text-align:left}
+th{background:#eee}
+</style>
+</head>
+<body>
+<h1>Relatório de Participação</h1>
+<p>${escapeHtml(classItem.name)} • Projeto Educacional 2.0</p>
+<table>
+<thead>
+<tr>
+<th>Nº</th><th>Aluno</th><th>Primeiro acesso</th><th>Último acesso</th>
+<th>Tempo nos exercícios</th><th>Acessadas</th><th>Resolvidas</th>
+</tr>
+</thead>
+<tbody>
+${rows.map(row => `
+<tr>
+<td>${escapeHtml(row.rosterText)}</td>
+<td>${escapeHtml(row.plainName)}</td>
+<td>${escapeHtml(formatDateTime(row.firstAccess))}</td>
+<td>${escapeHtml(formatDateTime(row.lastAccess))}</td>
+<td>${escapeHtml(formatDuration(row.duration))}</td>
+<td>${row.accessed}</td>
+<td>${row.resolved}</td>
+</tr>`).join("")}
+</tbody>
+</table>
+</body>
+</html>`;
+
+  const blob = new Blob([reportHtml],{type:"text/html;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+
+  anchor.href = url;
+  anchor.download = `relatorio_${normalizeClassCode(classItem.name)}.html`;
+
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+
+  URL.revokeObjectURL(url);
+}
+
+/* ============================================================
+   NAVEGAÇÃO
+   ============================================================ */
+function openAuthTab(role,tab){
+  if(role === "professor"){
+    $$("[data-prof-tab]").forEach(button =>
+      button.classList.toggle("active",button.dataset.profTab === tab)
+    );
+
+    $("#professorLoginForm").classList.toggle("hidden",tab !== "login");
+    $("#professorRegisterForm").classList.toggle("hidden",tab !== "register");
+    return;
+  }
+
+  $$("[data-student-tab]").forEach(button =>
+    button.classList.toggle("active",button.dataset.studentTab === tab)
+  );
+
+  $("#studentLoginForm").classList.toggle("hidden",tab !== "login");
+  $("#studentRegisterForm").classList.toggle("hidden",tab !== "register");
+}
+
+function openProfessorGlobalWorkspace(tab){
+  const config = {
+    classes:{
+      title:"Minhas Turmas",
+      subtitle:"Cadastre, edite e organize todas as turmas do professor."
+    },
+    activities:{
+      title:"Atividades",
+      subtitle:"Consulte o banco completo de atividades e libere conteúdos para suas turmas."
+    },
+    reports:{
+      title:"Relatórios",
+      subtitle:"Acompanhe participação, acessos, conclusões e tempo registrado por turma."
+    }
+  };
+
+  const selected = config[tab];
+  if(!selected) return;
+
+  // O menu superior é global. Por isso ele não depende de uma capa/área selecionada.
+  state.currentContext = null;
+
+  $("#workspaceTitle").textContent = selected.title;
+  $("#workspaceSubtitle").textContent = selected.subtitle;
+
+  const summary = $("#activityContextSummary");
+  if(summary){
+    summary.innerHTML = `
+      <strong>Banco geral do professor</strong>
+      <span>Para importar diretamente em uma área específica, abra primeiro a respectiva capa na tela Início.</span>
+    `;
+  }
+
+  populateClassSelects();
+  renderClassList();
+  renderActivityList();
+
+  showScreen("screenWorkspace");
+  setWorkspaceTab(tab);
+}
+
+function bindEvents(){
+  $("#openProfessorAccessBtn").addEventListener("click",() => showScreen("screenProfessorAuth"));
+  $("#openStudentAccessBtn").addEventListener("click",() => showScreen("screenStudentAuth"));
+
+  $$("[data-back-landing]").forEach(button => {
+    button.addEventListener("click",() => showScreen("screenLanding"));
+  });
+
+  $$("[data-prof-tab]").forEach(button => {
+    button.addEventListener("click",() => openAuthTab("professor",button.dataset.profTab));
+  });
+
+  $$("[data-student-tab]").forEach(button => {
+    button.addEventListener("click",() => openAuthTab("student",button.dataset.studentTab));
+  });
+
+  $("#professorLoginForm").addEventListener("submit",professorLogin);
+  $("#professorRegisterForm").addEventListener("submit",professorRegister);
+  $("#studentLoginForm").addEventListener("submit",studentLogin);
+  $("#studentRegisterForm").addEventListener("submit",studentRegister);
+
+  $("#logoutBtn").addEventListener("click",logout);
+  $("#adminGateForm").addEventListener("submit",submitAdminGate);
+  $("#adminGateLogoutBtn").addEventListener("click",logout);
+
+  $("#goHomeBtn").addEventListener("click",() => {
+    if(state.role === "professor") showProfessorHome();
+    if(state.role === "student") showStudentDashboard();
+  });
+
+  $$("[data-nav]").forEach(button => {
+    button.addEventListener("click",() => {
+      const nav = button.dataset.nav;
+
+      if(nav === "home"){
+        showProfessorHome();
+        return;
+      }
+
+      if(nav === "profile"){
+        showProfessorProfile();
+        return;
+      }
+
+      if(nav === "classes" || nav === "activities" || nav === "reports"){
+        openProfessorGlobalWorkspace(nav);
+      }
+    });
+  });
+
+  $$("[data-student-nav]").forEach(button => {
+    button.addEventListener("click",showStudentDashboard);
+  });
+
+  $("#workspaceBackBtn").addEventListener("click",showProfessorHome);
+
+  $$(".workspace-tab").forEach(button => {
+    button.addEventListener("click",() => setWorkspaceTab(button.dataset.workTab));
+  });
+
+  $$("[data-open-work]").forEach(button => {
+    button.addEventListener("click",() => setWorkspaceTab(button.dataset.openWork));
+  });
+
+  $("#classForm").addEventListener("submit",saveClass);
+
+  $("#generateClassCodeBtn").addEventListener("click",() => {
+    $("#classCode").value = makeRandomClassCode();
+  });
+
+  $("#cancelClassEditBtn").addEventListener("click",resetClassForm);
+  $("#openClassObservationsBtn")?.addEventListener("click",() => openClassObservations());
+  $("#closeClassObservationsBtn").addEventListener("click",closeClassObservations);
+  $("#saveClassObservationsBtn").addEventListener("click",saveClassObservations);
+  $("#clearClassObservationsBtn").addEventListener("click",clearClassObservationsFields);
+
+  $("#activityFile").addEventListener("change",event => {
+    const file = event.target.files?.[0];
+    if(file) processActivityFile(file);
+  });
+
+  $("#processActivityFileBtn").addEventListener("click",() => processActivityFile());
+  $("#confirmActivityImportBtn").addEventListener("click",confirmActivityImport);
+  $("#deleteActivityImportBtn").addEventListener("click",() => {
+    resetActivityImport();
+    $("#uploadResult").innerHTML = "";
+    toast("Importação excluída. Nenhuma atividade foi adicionada.","info");
+  });
+
+  const fileDrop = $("#activityFileDrop");
+
+  ["dragenter","dragover"].forEach(eventName => {
+    fileDrop.addEventListener(eventName,event => {
+      event.preventDefault();
+      fileDrop.classList.add("is-dragover");
+    });
+  });
+
+  ["dragleave","drop"].forEach(eventName => {
+    fileDrop.addEventListener(eventName,event => {
+      event.preventDefault();
+      fileDrop.classList.remove("is-dragover");
+    });
+  });
+
+  fileDrop.addEventListener("drop",event => {
+    const file = event.dataTransfer?.files?.[0];
+
+    if(file){
+      processActivityFile(file);
+    }
+  });
+
+  $("#activitySearch").addEventListener("input",debounce(renderActivityList,180));
+  $("#activityLevelFilter").addEventListener("change",renderActivityList);
+  $("#activitySort").addEventListener("change",renderActivityList);
+
+  $("#reportClassSelect").addEventListener("change",renderReport);
+  $("#reportSort").addEventListener("change",renderReport);
+  $("#downloadReportBtn").addEventListener("click",downloadReportHtml);
+
+  $("#profileBackBtn").addEventListener("click",showProfessorHome);
+  $("#changeKeyForm").addEventListener("submit",changeMyAccessKey);
+  $("#requireAdminKeyToggle").addEventListener("change",setAdminKeyRequired);
+
+  $("#backToStudentDashboardBtn").addEventListener("click",showStudentDashboard);
+  $("#backFromMaterialBtn").addEventListener("click",closeMaterialLab);
+
+  $("#clearStudentComponentFilter").addEventListener("click",() => {
+    state.studentContextSlug = null;
+
+    $$(".student-cover-item").forEach(card => {
+      card.classList.remove("active");
+    });
+
+    const data = loadData();
+
+    const assignedIds = data.assignments
+      .filter(item => item.classId === state.student.classId)
+      .map(item => item.activityId);
+
+    const items = data.activities.filter(item => assignedIds.includes(item.id));
+
+    renderStudentActivities(items,data,null);
+  });
+
+  $("#classObservationsModal").addEventListener("click",event => {
+    if(event.target.id === "classObservationsModal") closeClassObservations();
+  });
+
+  $("#closeStudentDetailsBtn").addEventListener("click",() => {
+    $("#studentDetailsModal").classList.add("hidden");
+  });
+
+  window.addEventListener("beforeunload",() => {
+    if(state.currentActivity) saveCurrentProgress();
+  });
+}
+
+/* ============================================================
+   INICIALIZAÇÃO
+   ============================================================ */
+async function init(){
+  bindEvents();
+  setupPasswordToggles();
+
+  $("#classYear").value = new Date().getFullYear();
+  $("#classCode").value = makeRandomClassCode();
+  state.classObservationDraft = emptyClassObservationData();
+  setClassObservationSummary(state.classObservationDraft);
+
+  await restoreSession();
+}
+
+document.addEventListener("DOMContentLoaded",init);
+
+/* ============================================================
+   ATUALIZAÇÃO PEDAGÓGICA — MATERIAL DOURADO
+   ============================================================ */
+function createMaterialBoard(dividend,divisor){
+  return {
+    dividend,
+    divisor,
+    confirmed:false,
+    phase:1,
+    available:{M:0,C:0,D:0,U:0},
+    groups:Array.from({length:divisor},() => ({M:0,C:0,D:0,U:0})),
+    solved:false,
+    batchQuantity:{M:1,C:1,D:1,U:1}
+  };
+}
+
+function materialGroupLayout(groupCount){
+  if(groupCount <= 4){
+    return {rows:1,columns:groupCount};
+  }
+  if(groupCount < 12){
+    return {rows:2,columns:Math.ceil(groupCount / 2)};
+  }
+  return {rows:3,columns:Math.ceil(groupCount / 3)};
+}
+
+function ensureMaterialContextMenu(){
+  let menu = document.getElementById("materialContextMenu");
+
+  if(!menu){
+    menu = document.createElement("div");
+    menu.id = "materialContextMenu";
+    menu.className = "material-context-menu hidden";
+    document.body.appendChild(menu);
+
+    document.addEventListener("click",event => {
+      if(!menu.contains(event.target)){
+        menu.classList.add("hidden");
+      }
+    });
+
+    window.addEventListener("resize",() => menu.classList.add("hidden"));
+    window.addEventListener("scroll",() => menu.classList.add("hidden"),true);
+  }
+
+  return menu;
+}
+
+function renderPieceVisuals(counts,location="pool",groupIndex=null){
+  const board = state.materialBoard;
+  const keys = ["M","C","D","U"];
+  const totalPieces = keys.reduce((sum,key) => sum + Number(counts[key] || 0),0);
+
+  if(!totalPieces){
+    return `<div class="md-empty-pieces">Nenhuma peça</div>`;
+  }
+
+  return keys.map(key => {
+    const count = Number(counts[key] || 0);
+    if(!count) return "";
+
+    const visible = Math.min(count,24);
+    const pieces = Array.from({length:visible},(_,index) => {
+      const draggable = location === "pool" ? 'draggable="true"' : "";
+      const attrs = location === "pool"
+        ? `data-drag-piece="${key}" data-piece-context="${key}"`
+        : `data-return-piece="${key}" data-return-group="${groupIndex}"`;
+
+      return `
+        <button
+          type="button"
+          class="md-piece md-piece-${key}"
+          title="${location === "pool" ? "Arraste para um grupo ou clique com o botão direito para enviar" : "Clique para devolver"}"
+          ${draggable}
+          ${attrs}
+          aria-label="${pieceLabel(key)} ${index+1}"
+        ></button>
+      `;
+    }).join("");
+
+    const remainder = count > visible
+      ? `<span class="md-more-pieces">+${count-visible}</span>`
+      : "";
+
+    const batchQty = location === "pool"
+      ? Math.max(1,Math.min((board?.batchQuantity?.[key] || 1),count))
+      : 1;
+
+    const controls = location === "pool"
+      ? `
+        <div class="md-batch-controls">
+          <div class="batch-label">Quantidade para envio rápido com botão direito</div>
+          <button type="button" data-md-batch-minus="${key}" aria-label="Diminuir quantidade">−</button>
+          <strong>${batchQty}</strong>
+          <button type="button" data-md-batch-plus="${key}" aria-label="Aumentar quantidade">+</button>
+        </div>
+      `
+      : "";
+
+    return `
+      <div class="md-piece-cluster ${location === "pool" ? "md-piece-cluster-pool" : ""}" ${location === "pool" ? `data-md-pool-cluster="${key}"` : ""}>
+        <div class="md-piece-cluster-label">
+          <strong>${pieceLabel(key)}</strong>
+          <span>${count}</span>
+        </div>
+        <div class="md-pieces-row">${pieces}${remainder}</div>
+        ${controls}
+      </div>
+    `;
+  }).join("");
+}
+
+function renderMaterialLab(){
+  const board = state.materialBoard;
+  const root = $("#materialLabRoot");
+  if(!board || !root) return;
+
+  const quotient = board.dividend / board.divisor;
+  const integerQuotient = Number.isInteger(quotient);
+  const layout = materialGroupLayout(board.groups.length);
+
+  root.innerHTML = `
+    <div class="material-lab-steps">
+      ${[["1","Representar"],["2","Trocar"],["3","Distribuir"],["4","Conferir"]].map(([number,label],index) => {
+        const step = index + 1;
+        const status = board.solved ? "done" : step < board.phase ? "done" : step === board.phase ? "active" : "";
+        return `
+          <div class="material-lab-step ${status}">
+            <span>${number}</span>
+            <strong>${label}</strong>
+          </div>
+        `;
+      }).join("")}
+    </div>
+
+    <section class="material-stage">
+      <div class="material-stage-heading">
+        <div>
+          <span class="stage-number">1</span>
+          <div>
+            <h2>Represente o dividendo</h2>
+            <p>Monte o número ${board.dividend} usando milhar, centena, dezena e unidade.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="material-white-grid">
+        ${[["M","MILHAR","1000"],["C","CENTENA","100"],["D","DEZENA","10"],["U","UNIDADE","1"]].map(([key,label,value]) => `
+          <article class="material-white-box">
+            <header>
+              <div>
+                <strong>${label}</strong>
+                <span>vale ${value}</span>
+              </div>
+              <span class="material-piece-count">${board.available[key]}</span>
+            </header>
+
+            <div class="material-piece-preview material-preview-${key}">
+              <span></span>
+            </div>
+
+            <div class="material-count-controls">
+              <button type="button" data-md-minus="${key}" aria-label="Retirar ${label.toLowerCase()}">−</button>
+              <strong>${board.available[key]}</strong>
+              <button type="button" data-md-plus="${key}" aria-label="Adicionar ${label.toLowerCase()}">+</button>
+            </div>
+          </article>
+        `).join("")}
+      </div>
+
+      <div class="material-stage-actions">
+        <button id="confirmMaterialRepresentationBtn" class="btn btn-primary" type="button">✓ CONFIRMAR REPRESENTAÇÃO ?</button>
+        <button id="resetMaterialRepresentationBtn" class="btn btn-outline" type="button">Refazer representação</button>
+      </div>
+    </section>
+
+    ${board.confirmed ? `
+      <section class="material-workspace-grid">
+        <aside class="material-stage material-exchange-stage">
+          <div class="material-stage-heading compact">
+            <div>
+              <span class="stage-number">2</span>
+              <div>
+                <h2>Trocas</h2>
+                <p>Faça trocas sem alterar o valor representado.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="exchange-lines">
+            <button type="button" class="exchange-line" data-md-exchange="M-C">
+              <strong>1 milhar → 10 centenas</strong>
+              <small>Transforme uma peça de milhar em centenas.</small>
+            </button>
+            <button type="button" class="exchange-line" data-md-exchange="C-D">
+              <strong>1 centena → 10 dezenas</strong>
+              <small>Transforme uma peça de centena em dezenas.</small>
+            </button>
+            <button type="button" class="exchange-line" data-md-exchange="D-U">
+              <strong>1 dezena → 10 unidades</strong>
+              <small>Transforme uma peça de dezena em unidades.</small>
+            </button>
+            <button type="button" class="exchange-line" data-md-exchange="U-D">
+              <strong>10 unidades → 1 dezena</strong>
+              <small>Reagrupe dez unidades em uma dezena.</small>
+            </button>
+          </div>
+
+          <div class="material-pool-card">
+            <div class="material-pool-heading">
+              <div>
+                <strong>Peças disponíveis</strong>
+                <small>Arraste uma peça até um grupo ou clique com o botão direito em uma peça para escolher para qual grupo enviar a quantidade selecionada.</small>
+              </div>
+              <span>${materialCountsValue(board.available)}</span>
+            </div>
+
+            <div id="materialPiecePool" class="material-pool-pieces">
+              ${renderPieceVisuals(board.available,"pool")}
+            </div>
+          </div>
+        </aside>
+
+        <section class="material-stage material-distribution-stage">
+          <div class="material-stage-heading compact">
+            <div>
+              <span class="stage-number">3</span>
+              <div>
+                <h2>Distribua entre ${board.divisor} grupos</h2>
+                <p>Organize os grupos em partes iguais. Quando houver muitos grupos, use a rolagem para manter a leitura confortável.</p>
+              </div>
+            </div>
+            <div class="divisor-chip">
+              <span>DIVISOR</span>
+              <strong>${board.divisor}</strong>
+            </div>
+          </div>
+
+          <div class="material-groups-scroll">
+            <div
+              class="material-groups-grid"
+              style="--md-group-columns:${layout.columns}; min-width:${layout.columns * 286 + Math.max(0,layout.columns - 1) * 14}px;"
+            >
+              ${board.groups.map((group,index) => `
+                <article class="material-group-white" data-material-group="${index}">
+                  <header>
+                    <div>
+                      <strong>Grupo ${index+1}</strong>
+                      <span>Valor: ${materialCountsValue(group)}</span>
+                    </div>
+                    <small>M:${group.M} • C:${group.C} • D:${group.D} • U:${group.U}</small>
+                  </header>
+
+                  <div class="material-group-pieces">
+                    ${renderPieceVisuals(group,"group",index)}
+                  </div>
+
+                  <div class="material-group-drop-note">Arraste peças até aqui. Para devolver, clique em uma peça dentro do grupo.</div>
+                </article>
+              `).join("")}
+            </div>
+          </div>
+
+          <div class="material-stage-actions">
+            <button id="checkMaterialDistributionBtn" class="btn btn-primary" type="button">✓ CONFERIR O RESULTADO</button>
+            <button id="collectMaterialPiecesBtn" class="btn btn-outline" type="button">↺ Recolher todas as peças</button>
+            <button id="restartMaterialLabBtn" class="btn btn-outline" type="button">Refazer tudo</button>
+          </div>
+
+          <div id="materialDistributionFeedback" class="material-message">
+            ${board.solved
+              ? `<strong>Parabéns!</strong> Você distribuiu as peças igualmente.`
+              : `Distribua as peças entre os grupos e use a conferência para revisar sua estratégia.`}
+          </div>
+
+          ${board.solved ? `
+            <div class="material-solved-panel">
+              <div>
+                <span>RESULTADO</span>
+                <strong>${board.dividend} ÷ ${board.divisor} = ${quotient}</strong>
+              </div>
+              <button id="useMaterialResultBtn" class="btn btn-success" type="button">USAR RESULTADO NO EXERCÍCIO</button>
+            </div>
+          ` : ""}
+        </section>
+      </section>
+    ` : ""}
+  `;
+
+  bindMaterialLabEvents();
+}
+
+function openMaterialContextMenu(key,x,y){
+  const board = state.materialBoard;
+  if(!board || !board.confirmed) return;
+  if((board.available[key] || 0) <= 0) return;
+
+  const menu = ensureMaterialContextMenu();
+  const qty = Math.max(1,Math.min(board.batchQuantity[key] || 1, board.available[key] || 1));
+
+  menu.innerHTML = `
+    <div class="material-context-title">Enviar <strong>${qty}</strong> peça(s) de ${pieceLabel(key).toLowerCase()} para:</div>
+    <div class="material-context-options">
+      ${board.groups.map((group,index) => `<button type="button" data-context-send="${key}" data-context-group="${index}" data-context-qty="${qty}">Grupo ${index+1}</button>`).join("")}
+    </div>
+  `;
+
+  menu.style.left = `${Math.min(x,window.innerWidth - 340)}px`;
+  menu.style.top = `${Math.min(y,window.innerHeight - 260)}px`;
+  menu.classList.remove("hidden");
+
+  $$('[data-context-send]',menu).forEach(button => {
+    button.addEventListener('click',event => {
+      event.stopPropagation();
+      moveMaterialPieceToGroup(button.dataset.contextSend,Number(button.dataset.contextGroup),Number(button.dataset.contextQty));
+      menu.classList.add('hidden');
     });
   });
 }
 
-function bindEvents(){$("#openProfessorAccessBtn").onclick=()=>showScreen('screenProfessorAuth');$("#openStudentAccessBtn").onclick=()=>showScreen('screenStudentAuth');$$('[data-back-landing]').forEach(b=>b.onclick=()=>showScreen('screenLanding'));$$('[data-prof-tab]').forEach(b=>b.onclick=()=>openAuthTab('professor',b.dataset.profTab));$$('[data-student-tab]').forEach(b=>b.onclick=()=>openAuthTab('student',b.dataset.studentTab));$("#professorLoginForm").onsubmit=professorLogin;$("#professorRegisterForm").onsubmit=professorRegister;$("#studentLoginForm").onsubmit=studentLogin;$("#studentRegisterForm").onsubmit=studentRegister;$("#logoutBtn").onclick=logout;$("#adminGateForm").onsubmit=submitAdminGate;$("#adminGateLogoutBtn").onclick=logout;$("#goHomeBtn").onclick=()=>state.role==='professor'?showProfessorHome():showStudentDashboard();$$('[data-nav]').forEach(b=>b.onclick=async()=>{const nav=b.dataset.nav;if(nav==='home')return showProfessorHome();if(nav==='profile')return showProfessorProfile();if(!state.currentContext){await showProfessorHome();return toast('Escolha uma capa para abrir esse ambiente.');}showScreen('screenWorkspace');setWorkspaceTab(nav==='classes'?'classes':nav==='activities'?'activities':'reports');});$$('[data-student-nav]').forEach(b=>b.onclick=showStudentDashboard);$("#workspaceBackBtn").onclick=showProfessorHome;$$('.workspace-tab').forEach(b=>b.onclick=()=>setWorkspaceTab(b.dataset.workTab));$$('[data-open-work]').forEach(b=>b.onclick=()=>setWorkspaceTab(b.dataset.openWork));$("#classForm").onsubmit=saveClass;$("#generateClassCodeBtn").onclick=()=>$("#classCode").value=makeRandomClassCode();$("#cancelClassEditBtn").onclick=resetClassForm;$("#refreshClassesBtn").onclick=loadClasses;$("#refreshActivitiesBtn").onclick=loadActivities;$("#activityComponent").onchange=fillModulesForSelectedComponent;$("#activityModule").onchange=updateMathFieldsVisibility;$("#activityForm").onsubmit=createActivity;$("#processActivityFileBtn").onclick=processActivityFile;$("#reportClassSelect").onchange=loadParticipationReport;$("#reportSort").onchange=renderReport;$("#refreshReportBtn").onclick=loadParticipationReport;$("#downloadReportBtn").onclick=downloadReportHtml;$("#profileBackBtn").onclick=showProfessorHome;$("#changeKeyForm").onsubmit=changeMyAccessKey;$("#requireAdminKeyToggle").onchange=setAdminKeyRequired;$("#backToStudentDashboardBtn").onclick=showStudentDashboard;$("#closeStudentDetailsBtn").onclick=()=>$("#studentDetailsModal").classList.add('hidden');['pointerdown','keydown','touchstart','mousemove'].forEach(evt=>document.addEventListener(evt,markInteraction,{passive:true}));document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.timerHandle){state.lastTick=Date.now();state.lastInteraction=Date.now();}});window.addEventListener('beforeunload',()=>{if(state.role==='student'&&state.currentClassActivity)saveCurrentDraft();});}
-async function init(){
-  setupPasswordToggles();bindEvents();$("#classYear").value=new Date().getFullYear();$("#classCode").value=makeRandomClassCode();await initSession();}
-document.addEventListener('DOMContentLoaded',init);
+function bindMaterialLabEvents(){
+  const board = state.materialBoard;
+  if(!board) return;
+
+  $("#confirmMaterialRepresentationBtn")?.addEventListener("click",() => {
+    const value = materialCountsValue(board.available);
+    if(value !== board.dividend){
+      return toast(`A representação vale ${value}. Monte exatamente ${board.dividend}.`,`error`);
+    }
+    board.confirmed = true;
+    board.phase = 2;
+    renderMaterialLab();
+    toast("Representação correta. Agora faça trocas e distribua as peças.","success");
+  });
+
+  $("#resetMaterialRepresentationBtn")?.addEventListener("click",() => {
+    state.materialBoard = createMaterialBoard(board.dividend,board.divisor);
+    renderMaterialLab();
+  });
+
+  $$('[data-md-plus]').forEach(button => {
+    button.addEventListener('click',() => {
+      const key = button.dataset.mdPlus;
+      board.available[key] += 1;
+      board.confirmed = false;
+      board.phase = 1;
+      board.solved = false;
+      renderMaterialLab();
+    });
+  });
+
+  $$('[data-md-minus]').forEach(button => {
+    button.addEventListener('click',() => {
+      const key = button.dataset.mdMinus;
+      board.available[key] = Math.max(0,board.available[key] - 1);
+      board.confirmed = false;
+      board.phase = 1;
+      board.solved = false;
+      renderMaterialLab();
+    });
+  });
+
+  $$('[data-md-batch-plus]').forEach(button => {
+    button.addEventListener('click',() => {
+      const key = button.dataset.mdBatchPlus;
+      const max = Math.max(1,board.available[key] || 1);
+      board.batchQuantity[key] = Math.min(max,(board.batchQuantity[key] || 1) + 1);
+      renderMaterialLab();
+    });
+  });
+
+  $$('[data-md-batch-minus]').forEach(button => {
+    button.addEventListener('click',() => {
+      const key = button.dataset.mdBatchMinus;
+      board.batchQuantity[key] = Math.max(1,(board.batchQuantity[key] || 1) - 1);
+      renderMaterialLab();
+    });
+  });
+
+  $$('[data-md-exchange]').forEach(button => {
+    button.addEventListener('click',() => applyMaterialExchange(button.dataset.mdExchange));
+  });
+
+  $$('[data-return-piece]').forEach(button => {
+    button.addEventListener('click',() => {
+      returnMaterialPieceToPool(button.dataset.returnPiece,Number(button.dataset.returnGroup));
+    });
+  });
+
+  $$('[data-drag-piece]').forEach(piece => {
+    piece.addEventListener('dragstart',event => {
+      const key = piece.dataset.dragPiece;
+      const quantity = Math.max(
+        1,
+        Math.min(
+          Number(board.batchQuantity?.[key] || 1),
+          Number(board.available?.[key] || 1)
+        )
+      );
+
+      event.dataTransfer.setData('text/material-piece',key);
+      event.dataTransfer.setData('text/material-count',String(quantity));
+      event.dataTransfer.effectAllowed = 'move';
+    });
+
+    piece.addEventListener('contextmenu',event => {
+      event.preventDefault();
+      openMaterialContextMenu(piece.dataset.pieceContext,event.clientX,event.clientY);
+    });
+  });
+
+  $$('[data-md-pool-cluster]').forEach(cluster => {
+    cluster.addEventListener('contextmenu',event => {
+      event.preventDefault();
+      openMaterialContextMenu(cluster.dataset.mdPoolCluster,event.clientX,event.clientY);
+    });
+  });
+
+  $$('[data-material-group]').forEach(group => {
+    group.addEventListener('dragover',event => {
+      event.preventDefault();
+      group.classList.add('is-dragover');
+    });
+
+    group.addEventListener('dragleave',() => group.classList.remove('is-dragover'));
+
+    group.addEventListener('drop',event => {
+      event.preventDefault();
+      group.classList.remove('is-dragover');
+      const key = event.dataTransfer.getData('text/material-piece');
+      const count = Number(event.dataTransfer.getData('text/material-count') || 1);
+      const index = Number(group.dataset.materialGroup);
+
+      if(key){
+        moveMaterialPieceToGroup(key,index,count);
+      }
+    });
+  });
+
+  $("#collectMaterialPiecesBtn")?.addEventListener('click',() => {
+    board.groups.forEach(group => {
+      ['M','C','D','U'].forEach(key => {
+        board.available[key] += group[key];
+        group[key] = 0;
+      });
+    });
+    board.phase = 2;
+    board.solved = false;
+    renderMaterialLab();
+  });
+
+  $("#restartMaterialLabBtn")?.addEventListener('click',() => {
+    state.materialBoard = createMaterialBoard(board.dividend,board.divisor);
+    renderMaterialLab();
+  });
+
+  $("#checkMaterialDistributionBtn")?.addEventListener('click',checkMaterialDistribution);
+
+  $("#useMaterialResultBtn")?.addEventListener('click',() => {
+    const quotient = board.dividend / board.divisor;
+    closeMaterialLab();
+    const answerInput = $("#studentFinalAnswer");
+    if(answerInput){
+      answerInput.value = String(quotient);
+      answerInput.focus();
+    }
+    toast('Resultado transferido para a resposta final. Revise e envie.','success');
+  });
+}
+
+function applyMaterialExchange(action){
+  const board = state.materialBoard;
+  if(!board) return;
+  const pool = board.available;
+  let valid = true;
+
+  if(action === 'M-C' && pool.M >= 1){
+    pool.M -= 1;
+    pool.C += 10;
+  }else if(action === 'C-D' && pool.C >= 1){
+    pool.C -= 1;
+    pool.D += 10;
+  }else if(action === 'D-U' && pool.D >= 1){
+    pool.D -= 1;
+    pool.U += 10;
+  }else if(action === 'U-D' && pool.U >= 10){
+    pool.U -= 10;
+    pool.D += 1;
+  }else{
+    valid = false;
+  }
+
+  if(!valid){
+    return toast('Não há peças suficientes para realizar essa troca.','error');
+  }
+
+  board.phase = Math.max(board.phase,2);
+  board.solved = false;
+  renderMaterialLab();
+}
+
+function moveMaterialPieceToGroup(key,index,count=1){
+  const board = state.materialBoard;
+  if(!board || !board.confirmed) return;
+  if(!['M','C','D','U'].includes(key)) return;
+  if(!board.groups[index]) return;
+
+  const amount = Math.max(1,Math.min(Number(count) || 1, board.available[key] || 0));
+  if(amount <= 0){
+    return toast(`Não há ${pieceLabel(key).toLowerCase()} disponível.`, 'error');
+  }
+
+  board.available[key] -= amount;
+  board.groups[index][key] += amount;
+  board.phase = Math.max(board.phase,3);
+  board.solved = false;
+  renderMaterialLab();
+}
+
+function returnMaterialPieceToPool(key,index){
+  const board = state.materialBoard;
+  if(!board || !board.groups[index]) return;
+  if(board.groups[index][key] <= 0) return;
+  board.groups[index][key] -= 1;
+  board.available[key] += 1;
+  board.solved = false;
+  renderMaterialLab();
+}
+
+function checkMaterialDistribution(){
+  const board = state.materialBoard;
+  if(!board) return;
+
+  const quotient = board.dividend / board.divisor;
+  const poolValue = materialCountsValue(board.available);
+  const values = board.groups.map(materialCountsValue);
+  const allEqual = values.every(value => value === quotient);
+  const correctTotal = materialTotalValue(board) === board.dividend;
+
+  if(Number.isInteger(quotient) && poolValue === 0 && allEqual && correctTotal){
+    board.phase = 4;
+    board.solved = true;
+    renderMaterialLab();
+    toast('Distribuição correta. Parabéns!','success');
+    return;
+  }
+
+  if(!Number.isInteger(quotient)){
+    const feedback = $("#materialDistributionFeedback");
+    if(feedback){
+      feedback.innerHTML =
+        "Continue usando as peças para representar sua estratégia. Esta atividade poderá ser revisada posteriormente pelo professor.";
+    }
+    toast("Revise a distribuição com a orientação do professor.","info");
+    return;
+  }
+
+  const feedback = $("#materialDistributionFeedback");
+  if(feedback){
+    if(poolValue > 0){
+      feedback.innerHTML = `Ainda existem peças fora dos grupos. Continue distribuindo até usar todas elas.`;
+    }else{
+      feedback.innerHTML = `Os grupos ainda não têm o mesmo valor. Revise a distribuição ou faça novas trocas.`;
+    }
+  }
+
+  toast('A distribuição ainda precisa ser ajustada.','error');
+}
