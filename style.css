@@ -4755,3 +4755,1119 @@ small{color:var(--muted)}
     font-size:1.02rem !important;
   }
 }
+
+
+/* ===========================================================
+   PROJETO EDUCACIONAL 7.0
+   SITUAÇÃO DO ALUNO + XLSX + HISTÓRICO PROTEGIDO DO RASCUNHO
+   =========================================================== */
+
+/* Situação do aluno no relatório */
+.student-situation-select{
+  min-width:148px;
+  min-height:42px;
+  padding:8px 34px 8px 12px;
+  border:1px solid rgba(255,216,102,.44);
+  border-radius:10px;
+  background:#0b1725;
+  color:#ffd866;
+  font:inherit;
+  font-size:1rem;
+  font-weight:800;
+  outline:none;
+}
+
+.student-situation-select:focus{
+  border-color:#ffd866;
+  box-shadow:0 0 0 3px rgba(255,216,102,.12);
+}
+
+/* Rascunho protegido */
+#studentScratch{
+  min-height:170px;
+}
+
+.scratch-protection-note{
+  display:block;
+  margin-top:9px;
+  color:#ffd866;
+  font-size:.98rem;
+  line-height:1.55;
+  font-weight:700;
+}
+
+#studentScratch::selection{
+  background:rgba(255,216,102,.28);
+}
+
+/* Detalhes e histórico do rascunho */
+.detail-activity{
+  border:1px solid rgba(142,165,189,.18);
+  border-radius:16px;
+  padding:18px;
+  margin-top:16px;
+  background:rgba(4,12,22,.52);
+}
+
+.detail-activity h4{
+  margin:0 0 12px;
+  font-size:1.28rem;
+}
+
+.scratch-current-box{
+  margin-top:16px;
+  padding:14px 16px;
+  border:1px solid rgba(255,216,102,.22);
+  border-radius:12px;
+  background:rgba(255,216,102,.06);
+}
+
+.scratch-current-box>span{
+  display:block;
+  margin-bottom:7px;
+  color:#ffd866;
+  font-size:.88rem;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+
+.scratch-current-box p{
+  margin:0;
+  color:#f3f7fb;
+  font-size:1.02rem;
+  line-height:1.6;
+  white-space:pre-wrap;
+}
+
+.scratch-history-details{
+  margin-top:14px;
+  border:1px solid rgba(70,151,255,.24);
+  border-radius:12px;
+  overflow:hidden;
+  background:rgba(13,31,51,.44);
+}
+
+.scratch-history-details summary{
+  cursor:pointer;
+  padding:14px 16px;
+  color:#8ec5ff;
+  font-size:1rem;
+  font-weight:900;
+  letter-spacing:.04em;
+  user-select:none;
+}
+
+.scratch-history-list{
+  max-height:460px;
+  overflow:auto;
+  padding:0 14px 14px;
+}
+
+.scratch-history-item{
+  margin-top:10px;
+  padding:13px;
+  border:1px solid rgba(142,165,189,.16);
+  border-radius:10px;
+  background:#071321;
+}
+
+.scratch-history-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.scratch-history-head strong{
+  color:#ffd866;
+}
+
+.scratch-history-head span,
+.scratch-history-item small{
+  color:#93a9bc;
+  font-size:.9rem;
+}
+
+.scratch-history-item small{
+  display:block;
+  margin-top:4px;
+}
+
+.scratch-history-item pre{
+  margin:10px 0 0;
+  white-space:pre-wrap;
+  word-break:break-word;
+  font-family:inherit;
+  color:#f4f7fb;
+  font-size:1rem;
+  line-height:1.55;
+}
+
+.scratch-history-empty{
+  color:#93a9bc;
+}
+
+/* O relatório comporta a nova coluna Situação sem reduzir demais o conteúdo. */
+.report-table{
+  min-width:1120px;
+}
+
+@media(max-width:700px){
+  .student-situation-select{
+    min-width:134px;
+  }
+
+  .scratch-history-head{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+}
+
+
+/* ===========================================================
+   PROJETO EDUCACIONAL 7.0
+   MATERIAL DOURADO — TELA CHEIA PREMIUM + RASCUNHO RESPONSIVO
+   =========================================================== */
+
+/* -----------------------------------------------------------
+   RASCUNHO À ESQUERDA / RESPOSTA FINAL À DIREITA
+   ----------------------------------------------------------- */
+.answer-panel-split{
+  display:grid !important;
+  grid-template-columns:minmax(0, 1.65fr) minmax(330px, .65fr);
+  grid-template-areas:
+    "scratch answer"
+    "scratch feedback";
+  gap:22px 24px !important;
+  align-items:start;
+}
+
+.answer-panel-split .scratch-column{
+  grid-area:scratch;
+  display:block;
+  min-width:0;
+}
+
+.answer-panel-split .final-answer-column{
+  grid-area:answer;
+  min-width:0;
+}
+
+.answer-panel-split #studentAnswerFeedback{
+  grid-area:feedback;
+}
+
+#studentScratch{
+  width:100%;
+  min-height:190px;
+  height:auto;
+  overflow-y:hidden !important;
+  resize:none !important;
+  box-sizing:border-box;
+  font-size:1.16rem !important;
+  line-height:1.72 !important;
+}
+
+.answer-panel-split .answer-actions{
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  gap:16px;
+  padding:20px;
+  border:1px solid rgba(48,170,244,.22);
+  border-radius:16px;
+  background:rgba(5,15,26,.45);
+}
+
+.answer-panel-split .answer-actions label{
+  width:100%;
+  font-size:1.13rem;
+  font-weight:900;
+}
+
+.answer-panel-split #studentFinalAnswer{
+  min-height:54px;
+  font-size:1.13rem;
+}
+
+.answer-panel-split #submitStudentAnswerBtn{
+  min-height:54px;
+  width:100%;
+  font-size:1.08rem;
+}
+
+/* -----------------------------------------------------------
+   PASSO 1: REPRESENTAR AGORA É UMA AÇÃO / BOTÃO
+   ----------------------------------------------------------- */
+.material-lab-step-button{
+  appearance:none;
+  width:100%;
+  border:1px solid rgba(48,170,244,.34);
+  background:rgba(48,170,244,.08);
+  color:#f7fbff;
+  cursor:pointer;
+  text-align:left;
+}
+
+.material-lab-step-button:hover{
+  border-color:#31aaf3;
+  background:rgba(48,170,244,.15);
+}
+
+.material-launch-stage{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:24px;
+  padding:26px 28px !important;
+  border:1px solid rgba(255,216,102,.25) !important;
+  background:
+    radial-gradient(circle at 8% 12%, rgba(255,216,102,.08), transparent 32%),
+    rgba(9,21,34,.74) !important;
+}
+
+.material-launch-copy{
+  min-width:0;
+}
+
+.material-launch-copy h2{
+  margin:0 0 7px;
+  font-size:1.65rem;
+}
+
+.material-launch-copy p{
+  margin:0;
+  color:#c6d4e1;
+  font-size:1.10rem;
+  line-height:1.6;
+}
+
+.material-launch-summary{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:13px;
+}
+
+.material-launch-summary span{
+  padding:7px 10px;
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:999px;
+  color:#d8e3ed;
+  font-size:.92rem;
+  font-weight:800;
+}
+
+.material-launch-stage .btn{
+  min-height:58px;
+  min-width:320px;
+  font-size:1.05rem;
+}
+
+/* botão para workspace expandido */
+.material-fullscreen-launch{
+  display:flex;
+  justify-content:flex-end;
+  margin:0 0 16px;
+}
+
+.material-fullscreen-launch .btn{
+  min-height:54px;
+  font-size:1rem;
+}
+
+/* -----------------------------------------------------------
+   OVERLAY DE TELA CHEIA
+   ----------------------------------------------------------- */
+.material-fullscreen-overlay{
+  position:fixed;
+  inset:0;
+  z-index:10050;
+  overflow:auto;
+  background:#f4f8fd;
+  color:#102844;
+}
+
+.material-fullscreen-root{
+  min-height:100%;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(57,130,246,.06), transparent 30%),
+    linear-gradient(180deg,#fbfdff 0%,#f4f8fd 50%,#edf4fb 100%);
+}
+
+.material-fs-shell{
+  min-height:100%;
+  padding:18px 22px 28px;
+}
+
+.material-fs-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:20px;
+  padding:10px 12px 18px;
+  border-bottom:1px solid #d8e5f3;
+}
+
+.material-fs-title .kicker{
+  display:block;
+  margin-bottom:4px;
+  color:#55718f;
+  font-size:.94rem;
+  font-weight:900;
+  letter-spacing:.06em;
+}
+
+.material-fs-title h1{
+  margin:0;
+  color:#092b5d;
+  font-size:clamp(1.8rem,2.8vw,2.65rem);
+  line-height:1.12;
+}
+
+.material-fs-title p{
+  margin:6px 0 0;
+  color:#46627e;
+  font-size:1.08rem;
+}
+
+.material-fs-header-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.material-fs-chip{
+  min-width:105px;
+  padding:10px 16px;
+  border:1px solid #bfd6ef;
+  border-radius:14px;
+  background:#edf5ff;
+  text-align:center;
+}
+
+.material-fs-chip span{
+  display:block;
+  color:#5b7694;
+  font-size:.76rem;
+  font-weight:900;
+  letter-spacing:.06em;
+}
+
+.material-fs-chip strong{
+  display:block;
+  margin-top:2px;
+  color:#1559b8;
+  font-size:1.65rem;
+}
+
+.material-fs-button{
+  min-height:48px;
+  border:1px solid #b9cde2;
+  border-radius:12px;
+  background:#fff;
+  color:#173a61;
+  padding:10px 16px;
+  font:inherit;
+  font-weight:900;
+  cursor:pointer;
+}
+
+.material-fs-button.primary{
+  border-color:#185cc4;
+  background:linear-gradient(180deg,#286fd5,#1452ad);
+  color:#fff;
+}
+
+.material-fs-button.gold{
+  border-color:#e8b936;
+  background:linear-gradient(180deg,#ffd864,#f3bd2f);
+  color:#17273a;
+}
+
+.material-fs-button.danger{
+  border-color:#d5deea;
+  background:#eef3f8;
+  color:#17304c;
+}
+
+/* -----------------------------------------------------------
+   REPRESENTAÇÃO FULL SCREEN
+   ----------------------------------------------------------- */
+.material-fs-section{
+  margin-top:18px;
+  padding:18px;
+  border:1px solid #cbdced;
+  border-radius:18px;
+  background:rgba(255,255,255,.84);
+  box-shadow:0 8px 28px rgba(26,65,106,.06);
+}
+
+.material-fs-section-heading{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:18px;
+  margin-bottom:16px;
+}
+
+.material-fs-section-heading h2{
+  margin:0;
+  color:#12345b;
+  font-size:1.65rem;
+}
+
+.material-fs-section-heading p{
+  margin:4px 0 0;
+  color:#587089;
+  font-size:1.02rem;
+  line-height:1.5;
+}
+
+.material-fs-target{
+  flex:0 0 auto;
+  padding:9px 15px;
+  border:1px solid #bcd2ea;
+  border-radius:12px;
+  background:#f8fbff;
+  text-align:center;
+}
+
+.material-fs-target span{
+  display:block;
+  color:#627994;
+  font-size:.80rem;
+}
+
+.material-fs-target strong{
+  display:block;
+  color:#185bc0;
+  font-size:1.7rem;
+}
+
+.premium-representation-grid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:14px;
+}
+
+.premium-piece-card{
+  min-width:0;
+  overflow:hidden;
+  border:1px solid #c8d9ea;
+  border-radius:16px;
+  background:#fff;
+}
+
+.premium-piece-card header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:12px 16px;
+  border-bottom:1px solid #dce7f2;
+  background:linear-gradient(180deg,#fbfdff,#f5f9fd);
+}
+
+.premium-piece-card header strong{
+  color:#173a5f;
+  font-size:1.12rem;
+}
+
+.premium-piece-card header span{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:48px;
+  min-height:30px;
+  padding:3px 9px;
+  border-radius:999px;
+  background:#e7f0f9;
+  color:#496680;
+  font-weight:900;
+}
+
+.premium-art-stage{
+  position:relative;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:220px;
+  padding:24px;
+  overflow:hidden;
+  perspective:900px;
+  background:
+    linear-gradient(180deg,rgba(246,250,254,.65),rgba(237,245,252,.45));
+}
+
+.premium-art-items{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:12px;
+  flex-wrap:wrap;
+  width:100%;
+}
+
+/* Peças de Material Dourado com acabamento CSS 3D */
+.gold3d{
+  position:relative;
+  flex:0 0 auto;
+  border:1px solid #cf8700;
+  background-color:#ffc840;
+  background-image:
+    linear-gradient(rgba(174,104,0,.34) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(174,104,0,.34) 1px,transparent 1px),
+    linear-gradient(145deg,rgba(255,255,255,.64),transparent 32%);
+  box-shadow:
+    0 10px 18px rgba(124,77,0,.16),
+    inset 1px 1px 0 rgba(255,255,255,.72),
+    inset -2px -3px 0 rgba(179,102,0,.18);
+}
+
+.gold3d::before,
+.gold3d::after{
+  content:"";
+  position:absolute;
+  pointer-events:none;
+}
+
+.gold3d-M{
+  width:94px;
+  height:94px;
+  background-size:9px 9px,9px 9px,100% 100%;
+  transform:rotateX(4deg) rotateY(-9deg);
+}
+
+.gold3d-M::before{
+  top:-10px;
+  left:9px;
+  width:100%;
+  height:10px;
+  border:1px solid #c98600;
+  border-bottom:0;
+  background:linear-gradient(180deg,#ffe18a,#f1ad19);
+  transform:skewX(-42deg);
+  transform-origin:left bottom;
+}
+
+.gold3d-M::after{
+  top:-5px;
+  right:-12px;
+  width:12px;
+  height:100%;
+  border:1px solid #bd7900;
+  border-left:0;
+  background:
+    linear-gradient(90deg,#e9a00b,#c27b00),
+    repeating-linear-gradient(0deg,rgba(111,67,0,.30) 0 1px,transparent 1px 9px);
+  transform:skewY(-43deg);
+  transform-origin:left top;
+}
+
+.gold3d-C{
+  width:92px;
+  height:92px;
+  background-size:9px 9px,9px 9px,100% 100%;
+  transform:rotateX(2deg) rotateY(-5deg);
+}
+
+.gold3d-D{
+  width:17px;
+  height:104px;
+  background-size:100% 10px,100% 10px,100% 100%;
+  border-radius:2px;
+}
+
+.gold3d-U{
+  width:28px;
+  height:28px;
+  background-size:100% 100%,100% 100%,100% 100%;
+  border-radius:3px;
+}
+
+.gold3d-ghost{
+  opacity:.32;
+  filter:saturate(.7);
+}
+
+.premium-count-controls{
+  display:grid;
+  grid-template-columns:54px 1fr 54px;
+  align-items:center;
+  gap:10px;
+  padding:12px 18px 16px;
+}
+
+.premium-count-controls button{
+  width:54px;
+  height:48px;
+  border:1px solid #426f9f;
+  border-radius:11px;
+  background:linear-gradient(180deg,#6f8dab,#486680);
+  color:#fff;
+  font-size:1.55rem;
+  font-weight:900;
+  cursor:pointer;
+}
+
+.premium-count-controls button:last-child{
+  border-color:#2468c8;
+  background:linear-gradient(180deg,#347be3,#1760c8);
+}
+
+.premium-count-controls strong{
+  color:#17334f;
+  text-align:center;
+  font-size:1.6rem;
+}
+
+.material-fs-status{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  margin-top:14px;
+  padding:13px 16px;
+  border:1px solid #b9d9c9;
+  border-radius:13px;
+  background:#edf9f3;
+  color:#19734f;
+  font-weight:900;
+}
+
+.material-fs-status.is-pending{
+  border-color:#d6e0ea;
+  background:#f6f9fc;
+  color:#577087;
+}
+
+.material-fs-footer-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:18px;
+}
+
+/* -----------------------------------------------------------
+   TROCAS + DISTRIBUIÇÃO FULL SCREEN
+   ----------------------------------------------------------- */
+.material-fs-workspace{
+  display:grid;
+  grid-template-columns:minmax(390px,470px) minmax(0,1fr);
+  gap:16px;
+  margin-top:16px;
+}
+
+.material-fs-exchanges,
+.material-fs-groups-panel{
+  min-width:0;
+  border:1px solid #cadced;
+  border-radius:18px;
+  background:rgba(255,255,255,.87);
+  box-shadow:0 8px 26px rgba(28,67,107,.055);
+}
+
+.material-fs-exchanges{
+  padding:18px;
+}
+
+.material-fs-groups-panel{
+  padding:18px;
+  overflow:hidden;
+}
+
+.material-fs-panel-title{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:14px;
+}
+
+.material-fs-panel-title h2{
+  margin:0;
+  color:#12375f;
+  font-size:1.55rem;
+}
+
+.material-fs-panel-title p{
+  margin:4px 0 0;
+  color:#61778d;
+  line-height:1.5;
+}
+
+.premium-exchange-list{
+  display:grid;
+  gap:10px;
+}
+
+.premium-exchange-button{
+  width:100%;
+  min-height:78px;
+  display:grid;
+  grid-template-columns:1fr auto 1fr;
+  align-items:center;
+  gap:12px;
+  padding:13px 15px;
+  border:1px solid #e1c875;
+  border-radius:14px;
+  background:linear-gradient(180deg,#fffdf8,#fff9e8);
+  color:#20364f;
+  text-align:left;
+  cursor:pointer;
+}
+
+.premium-exchange-button strong{
+  font-size:1.02rem;
+}
+
+.premium-exchange-button .arrow{
+  color:#1c6fd2;
+  font-size:1.6rem;
+  font-weight:900;
+}
+
+.premium-exchange-button small{
+  display:block;
+  margin-top:3px;
+  color:#8a6500;
+  font-size:.88rem;
+}
+
+.material-fs-pool{
+  margin-top:14px;
+  padding:14px;
+  border:1px solid #d6e2ee;
+  border-radius:14px;
+  background:#f8fbfe;
+}
+
+.material-fs-pool .material-pool-heading{
+  color:#183c62;
+}
+
+.material-fs-pool .material-pool-heading small{
+  color:#587189 !important;
+}
+
+.material-fs-pool .material-pool-heading>span{
+  color:#d79500 !important;
+}
+
+.material-fs-pool .md-piece-cluster{
+  border-color:#d7e2ed;
+  background:#fff;
+}
+
+.material-fs-pool .md-piece-cluster-label{
+  color:#25445f;
+}
+
+.material-fs-pool .md-batch-controls{
+  color:#3d5d78;
+}
+
+.material-fs-pool .md-batch-controls button{
+  color:#183c61;
+  background:#eef4fa;
+  border-color:#bfd1e3;
+}
+
+.material-fs-groups-scroll{
+  width:100%;
+  overflow:auto;
+  padding:2px 0 12px;
+}
+
+.material-fs-groups-grid{
+  display:grid;
+  width:100%;
+  grid-template-columns:repeat(var(--md-group-columns,4),minmax(245px,1fr));
+  gap:12px;
+}
+
+.material-fs-groups-grid .material-group-white{
+  min-width:245px !important;
+  min-height:265px !important;
+  border-color:#bfd3e7 !important;
+  background:#fff !important;
+  box-shadow:0 4px 14px rgba(27,69,111,.05);
+}
+
+.material-fs-groups-grid .material-group-white header strong{
+  color:#163652 !important;
+}
+
+.material-fs-groups-grid .material-group-white header span,
+.material-fs-groups-grid .material-group-white header small,
+.material-fs-groups-grid .material-group-drop-note{
+  color:#5b7086 !important;
+}
+
+.material-fs-groups-grid .md-piece-cluster-label{
+  color:#274760 !important;
+}
+
+.material-fs-controls{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:15px;
+}
+
+.material-fs-feedback{
+  margin-top:12px;
+  padding:13px 15px;
+  border:1px solid #d6e2ee;
+  border-radius:12px;
+  background:#f8fbfe;
+  color:#526c83;
+  font-weight:700;
+}
+
+.material-fs-result{
+  margin-top:12px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding:15px;
+  border:1px solid #afd8c0;
+  border-radius:14px;
+  background:#edf9f2;
+  color:#176a49;
+}
+
+.material-fs-result strong{
+  font-size:1.5rem;
+}
+
+/* -----------------------------------------------------------
+   Modal de saída
+   ----------------------------------------------------------- */
+.material-exit-card{
+  max-width:620px;
+}
+
+.material-exit-card p{
+  color:#aebcca;
+  font-size:1.03rem;
+  line-height:1.6;
+}
+
+.material-exit-actions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  margin-top:20px;
+}
+
+.material-exit-actions #materialExitCancelBtn{
+  grid-column:1 / -1;
+}
+
+.btn-danger-soft{
+  border:1px solid rgba(255,104,112,.38);
+  background:rgba(255,104,112,.10);
+  color:#ffb0b5;
+}
+
+/* -----------------------------------------------------------
+   Normal: botões abaixo dos grupos
+   ----------------------------------------------------------- */
+.material-stage-actions.material-bottom-actions{
+  flex-wrap:wrap;
+}
+
+#backToExerciseFromGroupsBtn{
+  border-color:rgba(255,216,102,.34);
+  color:#ffe178;
+}
+
+/* -----------------------------------------------------------
+   Responsivo
+   ----------------------------------------------------------- */
+@media(max-width:1200px){
+  .premium-representation-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+
+  .material-fs-workspace{
+    grid-template-columns:1fr;
+  }
+
+  .material-launch-stage{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+
+  .material-launch-stage .btn{
+    min-width:0;
+    width:100%;
+  }
+}
+
+@media(max-width:900px){
+  .answer-panel-split{
+    grid-template-columns:1fr;
+    grid-template-areas:
+      "scratch"
+      "answer"
+      "feedback";
+  }
+
+  .material-fs-header{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+
+  .material-fs-header-actions{
+    justify-content:flex-start;
+  }
+}
+
+@media(max-width:640px){
+  .premium-representation-grid{
+    grid-template-columns:1fr;
+  }
+
+  .material-fs-shell{
+    padding:12px 10px 22px;
+  }
+
+  .material-exit-actions{
+    grid-template-columns:1fr;
+  }
+
+  .material-exit-actions #materialExitCancelBtn{
+    grid-column:auto;
+  }
+}
+
+
+/* ===========================================================
+   CORREÇÃO DE VERIFICAÇÃO — TELA CHEIA
+   =========================================================== */
+
+/* A tela ampliada fica abaixo dos controles auxiliares. */
+.material-fullscreen-overlay{
+  z-index:10050 !important;
+}
+
+/* O menu do botão direito precisa ficar ACIMA da tela cheia. */
+.material-context-menu{
+  z-index:10200 !important;
+}
+
+/* A confirmação de saída precisa ficar ACIMA da tela cheia. */
+#materialExitModal{
+  z-index:10250 !important;
+}
+
+/* Feedbacks/toasts também devem continuar visíveis no modo ampliado. */
+.toast{
+  z-index:10300 !important;
+}
+
+/* ===========================================================
+   MATERIAL DOURADO 3D PREMIUM DENTRO DE TROCAS + GRUPOS
+   =========================================================== */
+
+.material-fs-pool .md-piece,
+.material-fs-groups-grid .md-piece{
+  position:relative;
+  overflow:visible;
+  border:1px solid #bd7600 !important;
+  background-color:#ffc943 !important;
+  background-image:
+    linear-gradient(145deg,rgba(255,255,255,.78),transparent 32%),
+    linear-gradient(315deg,rgba(137,75,0,.18),transparent 46%) !important;
+  box-shadow:
+    0 6px 10px rgba(112,67,0,.16),
+    inset 1px 1px 0 rgba(255,255,255,.76),
+    inset -2px -2px 0 rgba(170,95,0,.20) !important;
+  transform:perspective(240px) rotateX(4deg) rotateY(-7deg);
+  transition:transform .16s ease, box-shadow .16s ease;
+}
+
+.material-fs-pool .md-piece:hover,
+.material-fs-groups-grid .md-piece:hover{
+  transform:perspective(240px) rotateX(1deg) rotateY(-2deg) translateY(-2px);
+  box-shadow:
+    0 9px 14px rgba(112,67,0,.20),
+    inset 1px 1px 0 rgba(255,255,255,.82),
+    inset -2px -2px 0 rgba(170,95,0,.18) !important;
+}
+
+.material-fs-pool .md-piece-M,
+.material-fs-groups-grid .md-piece-M{
+  width:46px !important;
+  height:46px !important;
+  background:
+    linear-gradient(90deg,rgba(143,82,0,.24) 1px,transparent 1px),
+    linear-gradient(rgba(143,82,0,.24) 1px,transparent 1px),
+    linear-gradient(145deg,#ffe792,#ffc132 54%,#e99b07) !important;
+  background-size:8px 8px,8px 8px,100% 100% !important;
+}
+
+.material-fs-pool .md-piece-C,
+.material-fs-groups-grid .md-piece-C{
+  width:40px !important;
+  height:40px !important;
+  background:
+    linear-gradient(90deg,rgba(143,82,0,.24) 1px,transparent 1px),
+    linear-gradient(rgba(143,82,0,.24) 1px,transparent 1px),
+    linear-gradient(145deg,#ffe792,#ffc132 54%,#e99b07) !important;
+  background-size:7px 7px,7px 7px,100% 100% !important;
+}
+
+.material-fs-pool .md-piece-D,
+.material-fs-groups-grid .md-piece-D{
+  width:13px !important;
+  height:47px !important;
+  border-radius:2px;
+  background:
+    repeating-linear-gradient(
+      180deg,
+      rgba(143,82,0,.26) 0 1px,
+      transparent 1px 5px
+    ),
+    linear-gradient(90deg,#ffe181,#ffc13a 55%,#df9200) !important;
+}
+
+.material-fs-pool .md-piece-U,
+.material-fs-groups-grid .md-piece-U{
+  width:18px !important;
+  height:18px !important;
+  border-radius:3px;
+  background:linear-gradient(145deg,#ffe99c,#ffc43f 58%,#dc8e00) !important;
+}
+
+/* Mais espaço para visualizar as peças 3D na tela ampliada. */
+.material-fs-pool .md-pieces-row,
+.material-fs-groups-grid .md-pieces-row{
+  gap:8px !important;
+  align-items:flex-end;
+}
+
+.material-fs-pool .md-piece-cluster{
+  padding:13px !important;
+}
+
+.material-fs-groups-grid .material-group-pieces{
+  max-height:235px;
+}
+
+/* Mantém o diálogo de saída confortável em telas pequenas. */
+@media(max-width:700px){
+  #materialExitModal{
+    padding:14px;
+  }
+}

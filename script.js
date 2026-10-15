@@ -23,7 +23,9 @@ const state = {
   pendingImport:null,
   studentContextSlug:null,
   materialBoard:null,
-  classObservationDraft:null
+  classObservationDraft:null,
+  scratchHistoryTimer:null,
+  scratchSaveDebounced:null
 };
 
 const screens = [
@@ -519,6 +521,7 @@ async function studentRegister(event){
     roster:parsed.roster,
     rosterText:parsed.rosterText,
     passwordHash:await hashText(password),
+    status:"Ativo",
     createdAt:new Date().toISOString(),
     firstAccess:new Date().toISOString(),
     lastAccess:new Date().toISOString()
@@ -2100,7 +2103,20 @@ function openStudentActivity(item){
   showScreen("screenStudentActivity");
   startActivityTimer();
 
-  $("#studentScratch").oninput = debounce(saveCurrentProgress,600);
+  setupProtectedScratchField();
+  captureScratchHistorySnapshot("abertura da atividade",false);
+
+  state.scratchSaveDebounced = debounce(saveCurrentProgress,600);
+
+  $("#studentScratch").oninput = () => {
+    state.scratchSaveDebounced?.();
+    scheduleScratchHistoryCapture();
+  };
+
+  $("#studentScratch").onblur = () => {
+    captureScratchHistorySnapshot("pausa na escrita",true);
+    saveCurrentProgress();
+  };
 }
 
 function renderStudentAnswerArea(submission){
@@ -2121,6 +2137,150 @@ function renderStudentAnswerArea(submission){
 
   $("#studentFinalAnswer").value = submission.finalAnswer || "";
   $("#submitStudentAnswerBtn").addEventListener("click",submitStudentAnswer);
+}
+
+
+function getCurrentSubmission(data=loadData()){
+  if(!state.student || !state.currentActivity) return null;
+
+  return data.submissions.find(s =>
+    s.studentId === state.student.id &&
+    s.activityId === state.currentActivity.id
+  ) || null;
+}
+
+function ensureScratchHistory(submission){
+  if(!submission) return [];
+
+  if(!Array.isArray(submission.scratchHistory)){
+    submission.scratchHistory = [];
+
+    const existing = String(submission.scratch || "");
+    if(existing.trim()){
+      submission.scratchHistory.push({
+        at:submission.updatedAt || submission.accessedAt || new Date().toISOString(),
+        text:existing,
+        reason:"rascunho anterior"
+      });
+    }
+  }
+
+  return submission.scratchHistory;
+}
+
+function captureScratchHistorySnapshot(reason="digitação",force=false){
+  if(!state.student || !state.currentActivity) return;
+
+  const field = $("#studentScratch");
+  if(!field) return;
+
+  const data = loadData();
+  const submission = getCurrentSubmission(data);
+  if(!submission) return;
+
+  const history = ensureScratchHistory(submission);
+  const text = field.value || "";
+  const last = history.at(-1);
+
+  if(last?.text === text) return;
+
+  // Evita registrar um histórico vazio logo na abertura.
+  if(!text.trim() && !history.length) return;
+
+  const now = new Date();
+  const lastTime = last?.at ? new Date(last.at).getTime() : 0;
+  const elapsed = Date.now() - lastTime;
+  const delta = Math.abs(text.length - String(last?.text || "").length);
+
+  // Capturas automáticas: após pausas de escrita, evitando excesso de versões.
+  // Capturas forçadas ocorrem ao sair do campo, enviar resposta ou sair da atividade.
+  if(!force && last && elapsed < 5000 && delta < 12) return;
+
+  history.push({
+    at:now.toISOString(),
+    text,
+    reason
+  });
+
+  // Limite local para impedir crescimento indefinido do navegador.
+  if(history.length > 150){
+    submission.scratchHistory = history.slice(-150);
+  }
+
+  submission.scratch = text;
+  submission.updatedAt = now.toISOString();
+  saveData(data);
+}
+
+function scheduleScratchHistoryCapture(){
+  if(state.scratchHistoryTimer){
+    clearTimeout(state.scratchHistoryTimer);
+  }
+
+  state.scratchHistoryTimer = setTimeout(() => {
+    captureScratchHistorySnapshot("digitação",false);
+    state.scratchHistoryTimer = null;
+  },2500);
+}
+
+function blockScratchAction(event,message="Ação bloqueada no rascunho. Digite o conteúdo manualmente."){
+  event.preventDefault();
+  event.stopPropagation();
+  toast(message,"info");
+}
+
+function setupProtectedScratchField(){
+  const field = $("#studentScratch");
+  if(!field) return;
+
+  // Evita empilhar listeners toda vez que uma nova atividade é aberta.
+  if(field.dataset.protectionBound === "1") return;
+  field.dataset.protectionBound = "1";
+
+  field.addEventListener("keydown",event => {
+    const key = String(event.key || "").toLowerCase();
+
+    if((event.ctrlKey || event.metaKey) && ["c","v","x"].includes(key)){
+      blockScratchAction(event);
+    }
+  });
+
+  ["copy","paste","cut","contextmenu","drop","dragstart"].forEach(eventName => {
+    field.addEventListener(eventName,event => {
+      blockScratchAction(event);
+    });
+  });
+
+  field.addEventListener("dragover",event => {
+    // Bloqueia arrastar texto para dentro do campo.
+    event.preventDefault();
+    event.dataTransfer && (event.dataTransfer.dropEffect = "none");
+  });
+
+  field.addEventListener("beforeinput",event => {
+    const blockedTypes = [
+      "insertFromPaste",
+      "insertFromDrop",
+      "deleteByCut"
+    ];
+
+    if(blockedTypes.includes(event.inputType)){
+      blockScratchAction(event);
+    }
+  });
+}
+
+function formatScratchReason(reason){
+  const map = {
+    "abertura da atividade":"Abertura",
+    "digitação":"Registro durante a escrita",
+    "pausa na escrita":"Pausa na escrita",
+    "envio da resposta":"Envio da resposta",
+    "saída da atividade":"Saída da atividade",
+    "rascunho anterior":"Registro anterior"
+  };
+
+  return map[reason] || reason || "Registro";
 }
 
 function startActivityTimer(){
@@ -2158,7 +2318,13 @@ function stopActivityTimer(save=true){
   }
 
   if(save && state.currentActivity){
+    captureScratchHistorySnapshot("saída da atividade",true);
     saveCurrentProgress();
+  }
+
+  if(state.scratchHistoryTimer){
+    clearTimeout(state.scratchHistoryTimer);
+    state.scratchHistoryTimer = null;
   }
 }
 
@@ -2196,6 +2362,19 @@ function submitStudentAnswer(){
   const answer = $("#studentFinalAnswer").value.trim();
   const expected = String(state.currentActivity.answer || "").trim();
 
+  captureScratchHistorySnapshot("envio da resposta",true);
+
+  // Recarrega os dados para incluir a versão de rascunho recém-salva.
+  const refreshedData = loadData();
+  const refreshedSubmission = refreshedData.submissions.find(s =>
+    s.studentId === state.student.id &&
+    s.activityId === state.currentActivity.id
+  );
+
+  if(refreshedSubmission){
+    Object.assign(submission,refreshedSubmission);
+  }
+
   submission.attempts += 1;
   submission.finalAnswer = answer;
   submission.scratch = $("#studentScratch").value;
@@ -2223,6 +2402,14 @@ function submitStudentAnswer(){
       feedback.classList.add("incorrect");
       feedback.textContent = "Resposta incorreta. Revise sua estratégia e tente novamente.";
     }
+  }
+
+  if(state.materialBoard){
+    submission.materialProgress = {
+      board:serializeMaterialBoard(state.materialBoard),
+      savedAt:new Date().toISOString(),
+      reason:submission.resolved ? "resposta enviada corretamente" : "resposta enviada"
+    };
   }
 
   saveData(data);
@@ -2976,6 +3163,7 @@ function buildReportRows(){
       student,
       roster:student.roster,
       rosterText:student.rosterText,
+      situation:student.status || "Ativo",
       plainName:student.plainName,
       firstAccess:student.firstAccess || submissions.map(s => s.accessedAt).filter(Boolean).sort()[0] || null,
       lastAccess:student.lastAccess || submissions.map(s => s.updatedAt).filter(Boolean).sort().at(-1) || null,
@@ -3053,6 +3241,7 @@ function renderReport(){
       <thead>
         <tr>
           <th>Nº</th>
+          <th>Situação</th>
           <th>Aluno</th>
           <th>Primeiro acesso</th>
           <th>Último acesso</th>
@@ -3067,6 +3256,15 @@ function renderReport(){
         ${rows.map(row => `
           <tr>
             <td class="roster-cell">${escapeHtml(row.rosterText)}</td>
+            <td>
+              <select class="student-situation-select"
+                      data-student-situation="${row.student.id}"
+                      aria-label="Situação de ${escapeHtml(row.plainName)}">
+                ${["Ativo","Remanejando","Desistente"].map(option => `
+                  <option value="${option}" ${row.situation === option ? "selected" : ""}>${option}</option>
+                `).join("")}
+              </select>
+            </td>
             <td><strong>${escapeHtml(row.plainName)}</strong></td>
             <td>${escapeHtml(formatDateTime(row.firstAccess))}</td>
             <td>${escapeHtml(formatDateTime(row.lastAccess))}</td>
@@ -3084,9 +3282,30 @@ function renderReport(){
     </table>
   `;
 
+  $$("[data-student-situation]",wrap).forEach(select => {
+    select.addEventListener("change",() => {
+      updateStudentSituation(select.dataset.studentSituation,select.value);
+    });
+  });
+
   $$("[data-student-detail]",wrap).forEach(button => {
     button.addEventListener("click",() => openStudentDetails(button.dataset.studentDetail));
   });
+}
+
+
+function updateStudentSituation(studentId,status){
+  const allowed = ["Ativo","Remanejando","Desistente"];
+  if(!allowed.includes(status)) return;
+
+  const data = loadData();
+  const student = data.students.find(item => item.id === studentId);
+  if(!student) return;
+
+  student.status = status;
+  saveData(data);
+  toast(`Situação atualizada para ${status}.`,"success");
+  buildReportRows();
 }
 
 function openStudentDetails(studentId){
@@ -3103,12 +3322,44 @@ function openStudentDetails(studentId){
     ? row.submissions.map(submission => {
         const activity = data.activities.find(a => a.id === submission.activityId);
 
+        const history = Array.isArray(submission.scratchHistory)
+          ? submission.scratchHistory
+          : (submission.scratch ? [{
+              at:submission.updatedAt || submission.accessedAt,
+              text:submission.scratch,
+              reason:"rascunho anterior"
+            }] : []);
+
         return `
           <article class="detail-activity">
             <h4>${escapeHtml(activity?.title || "Atividade")}</h4>
             <p><strong>Acesso:</strong> ${escapeHtml(formatDateTime(submission.accessedAt))}</p>
             <p><strong>Tempo ativo:</strong> ${escapeHtml(formatDuration(submission.activeSeconds))}</p>
             <p><strong>Tentativas:</strong> ${submission.attempts || 0} • <strong>Status:</strong> ${submission.resolved ? "Resolvida" : "Em andamento"}</p>
+
+            <div class="scratch-current-box">
+              <span>RASCUNHO ATUAL</span>
+              <p>${submission.scratch ? escapeHtml(submission.scratch) : "Nenhum rascunho registrado."}</p>
+            </div>
+
+            <details class="scratch-history-details">
+              <summary>HISTÓRICO DO RASCUNHO (${history.length})</summary>
+
+              <div class="scratch-history-list">
+                ${history.length ? history.map((snapshot,index) => `
+                  <article class="scratch-history-item">
+                    <div class="scratch-history-head">
+                      <strong>Versão ${index + 1}</strong>
+                      <span>${escapeHtml(formatDateTime(snapshot.at))}</span>
+                    </div>
+                    <small>${escapeHtml(formatScratchReason(snapshot.reason))}</small>
+                    <pre>${escapeHtml(snapshot.text || "")}</pre>
+                  </article>
+                `).join("") : `
+                  <p class="scratch-history-empty">Nenhuma versão do rascunho registrada.</p>
+                `}
+              </div>
+            </details>
           </article>
         `;
       }).join("")
@@ -3117,64 +3368,147 @@ function openStudentDetails(studentId){
   $("#studentDetailsModal").classList.remove("hidden");
 }
 
-function downloadReportHtml(){
+function safeSheetName(name){
+  return String(name || "Relatorio")
+    .replace(/[\\/?*\[\]:]/g," ")
+    .trim()
+    .slice(0,31) || "Relatorio";
+}
+
+function downloadReportXlsx(){
   const classId = $("#reportClassSelect").value;
   const classItem = currentProfessorClasses().find(c => c.id === classId);
 
   if(!classItem) return toast("Selecione uma turma.","error");
 
+  if(typeof XLSX === "undefined"){
+    return toast(
+      "Não foi possível carregar o gerador de planilhas. Verifique a conexão e tente novamente.",
+      "error"
+    );
+  }
+
   const rows = sortedReportRows();
+  const data = loadData();
 
-  const reportHtml = `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<title>Relatório - ${escapeHtml(classItem.name)}</title>
-<style>
-body{font-family:Arial,sans-serif;padding:30px;color:#111}
-table{width:100%;border-collapse:collapse;margin-top:24px}
-th,td{border:1px solid #ccc;padding:8px;text-align:left}
-th{background:#eee}
-</style>
-</head>
-<body>
-<h1>Relatório de Participação</h1>
-<p>${escapeHtml(classItem.name)} • Projeto Educacional 2.0</p>
-<table>
-<thead>
-<tr>
-<th>Nº</th><th>Aluno</th><th>Primeiro acesso</th><th>Último acesso</th>
-<th>Tempo nos exercícios</th><th>Acessadas</th><th>Resolvidas</th>
-</tr>
-</thead>
-<tbody>
-${rows.map(row => `
-<tr>
-<td>${escapeHtml(row.rosterText)}</td>
-<td>${escapeHtml(row.plainName)}</td>
-<td>${escapeHtml(formatDateTime(row.firstAccess))}</td>
-<td>${escapeHtml(formatDateTime(row.lastAccess))}</td>
-<td>${escapeHtml(formatDuration(row.duration))}</td>
-<td>${row.accessed}</td>
-<td>${row.resolved}</td>
-</tr>`).join("")}
-</tbody>
-</table>
-</body>
-</html>`;
+  const participationRows = [
+    [
+      "Nº",
+      "Situação",
+      "Aluno",
+      "Primeiro acesso",
+      "Último acesso",
+      "Tempo nos exercícios",
+      "Tempo total (segundos)",
+      "Atividades acessadas",
+      "Atividades resolvidas"
+    ],
+    ...rows.map(row => [
+      row.rosterText,
+      row.situation || "Ativo",
+      row.plainName,
+      formatDateTime(row.firstAccess),
+      formatDateTime(row.lastAccess),
+      formatDuration(row.duration),
+      row.duration,
+      row.accessed,
+      row.resolved
+    ])
+  ];
 
-  const blob = new Blob([reportHtml],{type:"text/html;charset=utf-8"});
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
+  const activityRows = [[
+    "Nº",
+    "Situação",
+    "Aluno",
+    "Atividade",
+    "Acesso",
+    "Última atualização",
+    "Tempo ativo",
+    "Tentativas",
+    "Status",
+    "Resposta final",
+    "Rascunho atual",
+    "Versões do rascunho"
+  ]];
 
-  anchor.href = url;
-  anchor.download = `relatorio_${normalizeClassCode(classItem.name)}.html`;
+  const historyRows = [[
+    "Nº",
+    "Aluno",
+    "Atividade",
+    "Versão",
+    "Data/hora",
+    "Momento",
+    "Conteúdo do rascunho"
+  ]];
 
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
+  rows.forEach(row => {
+    row.submissions.forEach(submission => {
+      const activity = data.activities.find(item => item.id === submission.activityId);
+      const history = Array.isArray(submission.scratchHistory)
+        ? submission.scratchHistory
+        : (submission.scratch ? [{
+            at:submission.updatedAt || submission.accessedAt,
+            text:submission.scratch,
+            reason:"rascunho anterior"
+          }] : []);
 
-  URL.revokeObjectURL(url);
+      activityRows.push([
+        row.rosterText,
+        row.situation || "Ativo",
+        row.plainName,
+        activity?.title || "Atividade",
+        formatDateTime(submission.accessedAt),
+        formatDateTime(submission.updatedAt),
+        formatDuration(submission.activeSeconds),
+        Number(submission.attempts || 0),
+        submission.resolved ? "Resolvida" : "Em andamento",
+        submission.finalAnswer || "",
+        submission.scratch || "",
+        history.length
+      ]);
+
+      history.forEach((snapshot,index) => {
+        historyRows.push([
+          row.rosterText,
+          row.plainName,
+          activity?.title || "Atividade",
+          index + 1,
+          formatDateTime(snapshot.at),
+          formatScratchReason(snapshot.reason),
+          snapshot.text || ""
+        ]);
+      });
+    });
+  });
+
+  const workbook = XLSX.utils.book_new();
+
+  const participationSheet = XLSX.utils.aoa_to_sheet(participationRows);
+  const activitySheet = XLSX.utils.aoa_to_sheet(activityRows);
+  const historySheet = XLSX.utils.aoa_to_sheet(historyRows);
+
+  participationSheet["!cols"] = [
+    {wch:8},{wch:16},{wch:30},{wch:20},{wch:20},
+    {wch:22},{wch:20},{wch:20},{wch:20}
+  ];
+
+  activitySheet["!cols"] = [
+    {wch:8},{wch:16},{wch:28},{wch:34},{wch:20},{wch:20},
+    {wch:18},{wch:12},{wch:16},{wch:24},{wch:45},{wch:20}
+  ];
+
+  historySheet["!cols"] = [
+    {wch:8},{wch:28},{wch:34},{wch:10},{wch:20},{wch:24},{wch:70}
+  ];
+
+  XLSX.utils.book_append_sheet(workbook,participationSheet,"Participação");
+  XLSX.utils.book_append_sheet(workbook,activitySheet,"Atividades");
+  XLSX.utils.book_append_sheet(workbook,historySheet,"Histórico Rascunho");
+
+  const filename = `Relatorio_Participacao_${normalizeClassCode(classItem.name)}_${classItem.year || new Date().getFullYear()}.xlsx`;
+
+  XLSX.writeFile(workbook,filename);
+  toast("Planilha de participação gerada com sucesso.","success");
 }
 
 /* ============================================================
@@ -3359,7 +3693,7 @@ function bindEvents(){
 
   $("#reportClassSelect").addEventListener("change",renderReport);
   $("#reportSort").addEventListener("change",renderReport);
-  $("#downloadReportBtn").addEventListener("click",downloadReportHtml);
+  $("#downloadReportBtn").addEventListener("click",downloadReportXlsx);
 
   $("#profileBackBtn").addEventListener("click",showProfessorHome);
   $("#changeKeyForm").addEventListener("submit",changeMyAccessKey);
@@ -3984,3 +4318,1233 @@ function checkMaterialDistribution(){
 
   toast('A distribuição ainda precisa ser ajustada.','error');
 }
+
+
+/* ============================================================
+   PROJETO EDUCACIONAL 7.0 — MATERIAL DOURADO TELA CHEIA
+   Atualização consolidada 14/10/2026
+   ============================================================ */
+
+function deepCloneMaterial(value){
+  return JSON.parse(JSON.stringify(value));
+}
+
+function createMaterialBoard(dividend,divisor){
+  return {
+    dividend:Number(dividend),
+    divisor:Number(divisor),
+    confirmed:false,
+    phase:1,
+    available:{M:0,C:0,D:0,U:0},
+    groups:Array.from({length:Number(divisor)},() => ({M:0,C:0,D:0,U:0})),
+    solved:false,
+    batchQuantity:{M:1,C:1,D:1,U:1},
+    history:[]
+  };
+}
+
+function normalizeMaterialBoard(board,dividend,divisor){
+  if(!board || Number(board.dividend) !== Number(dividend) || Number(board.divisor) !== Number(divisor)){
+    return createMaterialBoard(dividend,divisor);
+  }
+
+  const normalized = createMaterialBoard(dividend,divisor);
+  normalized.confirmed = Boolean(board.confirmed);
+  normalized.phase = Math.max(1,Number(board.phase || 1));
+  normalized.solved = Boolean(board.solved);
+
+  ["M","C","D","U"].forEach(key => {
+    normalized.available[key] = Math.max(0,Number(board.available?.[key] || 0));
+    normalized.batchQuantity[key] = Math.max(1,Number(board.batchQuantity?.[key] || 1));
+  });
+
+  if(Array.isArray(board.groups)){
+    normalized.groups = Array.from({length:Number(divisor)},(_,index) => {
+      const source = board.groups[index] || {};
+      return {
+        M:Math.max(0,Number(source.M || 0)),
+        C:Math.max(0,Number(source.C || 0)),
+        D:Math.max(0,Number(source.D || 0)),
+        U:Math.max(0,Number(source.U || 0))
+      };
+    });
+  }
+
+  normalized.history = Array.isArray(board.history)
+    ? board.history.slice(-250)
+    : [];
+
+  return normalized;
+}
+
+function serializeMaterialBoard(board=state.materialBoard){
+  if(!board) return null;
+
+  return {
+    dividend:Number(board.dividend),
+    divisor:Number(board.divisor),
+    confirmed:Boolean(board.confirmed),
+    phase:Number(board.phase || 1),
+    solved:Boolean(board.solved),
+    available:{
+      M:Number(board.available?.M || 0),
+      C:Number(board.available?.C || 0),
+      D:Number(board.available?.D || 0),
+      U:Number(board.available?.U || 0)
+    },
+    groups:(board.groups || []).map(group => ({
+      M:Number(group.M || 0),
+      C:Number(group.C || 0),
+      D:Number(group.D || 0),
+      U:Number(group.U || 0)
+    })),
+    batchQuantity:{
+      M:Number(board.batchQuantity?.M || 1),
+      C:Number(board.batchQuantity?.C || 1),
+      D:Number(board.batchQuantity?.D || 1),
+      U:Number(board.batchQuantity?.U || 1)
+    },
+    history:Array.isArray(board.history) ? board.history.slice(-250) : []
+  };
+}
+
+function getSavedMaterialBoard(dividend,divisor){
+  const data = loadData();
+  const submission = getCurrentSubmission(data);
+  const raw = submission?.materialProgress?.board || submission?.materialProgress || null;
+
+  if(!raw) return null;
+  return normalizeMaterialBoard(raw,dividend,divisor);
+}
+
+function compactMaterialSnapshot(board=state.materialBoard){
+  if(!board) return null;
+
+  return {
+    pool:{...board.available},
+    groupValues:board.groups.map(group => materialCountsValue(group)),
+    phase:board.phase,
+    solved:Boolean(board.solved)
+  };
+}
+
+function recordMaterialMovement(action,details={}){
+  const board = state.materialBoard;
+  if(!board) return;
+
+  if(!Array.isArray(board.history)) board.history = [];
+
+  board.history.push({
+    at:new Date().toISOString(),
+    action,
+    details,
+    state:compactMaterialSnapshot(board)
+  });
+
+  if(board.history.length > 250){
+    board.history = board.history.slice(-250);
+  }
+
+  // Na tela normal, as movimentações são protegidas automaticamente.
+  // Nos ambientes full-screen, o aluno escolhe ao sair se deseja salvar.
+  if(!state.materialFullscreenMode){
+    saveMaterialProgress(action);
+  }
+}
+
+function saveMaterialProgress(reason="progresso"){
+  if(!state.student || !state.currentActivity || !state.materialBoard) return;
+
+  const data = loadData();
+  const submission = getCurrentSubmission(data);
+  if(!submission) return;
+
+  submission.materialProgress = {
+    board:serializeMaterialBoard(state.materialBoard),
+    savedAt:new Date().toISOString(),
+    reason
+  };
+  submission.updatedAt = new Date().toISOString();
+
+  saveData(data);
+}
+
+function setMaterialFullscreenSnapshot(mode){
+  state.materialFullscreenMode = mode;
+  state.materialFullscreenSnapshot = deepCloneMaterial(serializeMaterialBoard(state.materialBoard));
+}
+
+function clearMaterialFullscreenState(){
+  state.materialFullscreenMode = null;
+  state.materialFullscreenSnapshot = null;
+  state.materialExitSource = null;
+}
+
+function hideMaterialFullscreenOverlays(){
+  $("#materialRepresentationFullscreen")?.classList.add("hidden");
+  $("#materialWorkspaceFullscreen")?.classList.add("hidden");
+  $("#materialExitModal")?.classList.add("hidden");
+  document.body.classList.remove("material-overlay-open");
+}
+
+function openMaterialLab(){
+  const item = state.currentActivity;
+  if(!item) return;
+
+  saveCurrentProgress();
+
+  const {dividend,divisor} = inferMaterialOperands(item);
+  state.materialBoard =
+    getSavedMaterialBoard(dividend,divisor) ||
+    createMaterialBoard(dividend,divisor);
+
+  $("#materialLabTitle").textContent = item.title || "Divisão com Material Dourado";
+  $("#materialLabStatement").textContent = item.statement || "";
+  $("#materialLabOperation").textContent = `${dividend} ÷ ${divisor}`;
+  $("#materialLabQuestion").textContent = item.question || "";
+
+  renderMaterialLab();
+  showScreen("screenMaterialLab");
+}
+
+function closeMaterialLab(){
+  saveMaterialProgress("voltar ao exercício");
+  hideMaterialFullscreenOverlays();
+  clearMaterialFullscreenState();
+  showScreen("screenStudentActivity");
+  $("#activityTimerDisplay").textContent = timerText(state.activeSeconds);
+  autoGrowScratchField();
+}
+
+function premiumPieceMarkup(key,count){
+  const safeCount = Math.max(0,Number(count || 0));
+  const maxVisible = key === "D" ? 10 : key === "U" ? 12 : 4;
+  const visible = Math.min(safeCount,maxVisible);
+
+  if(!safeCount){
+    return `<div class="gold3d gold3d-${key} gold3d-ghost" aria-hidden="true"></div>`;
+  }
+
+  const pieces = Array.from({length:visible},() =>
+    `<div class="gold3d gold3d-${key}" aria-hidden="true"></div>`
+  ).join("");
+
+  const extra = safeCount > visible
+    ? `<span class="md-more-pieces">+${safeCount-visible}</span>`
+    : "";
+
+  return `${pieces}${extra}`;
+}
+
+function renderRepresentationFullscreen(){
+  const board = state.materialBoard;
+  const root = $("#materialRepresentationFullscreenRoot");
+  if(!board || !root) return;
+
+  const representedValue = materialCountsValue(board.available);
+  const correct = representedValue === board.dividend;
+
+  root.innerHTML = `
+    <div class="material-fs-shell">
+      <header class="material-fs-header">
+        <div class="material-fs-title">
+          <span class="kicker">DIVISÃO COM MATERIAL DOURADO</span>
+          <h1>Represente o dividendo</h1>
+          <p>Monte ${board.dividend} usando milhar, centena, dezena e unidade.</p>
+        </div>
+
+        <div class="material-fs-header-actions">
+          <div class="material-fs-chip">
+            <span>DIVISOR</span>
+            <strong>${board.divisor}</strong>
+          </div>
+          <button id="repBackExerciseBtn" class="material-fs-button" type="button">VOLTAR AO EXERCÍCIO</button>
+          <button id="repExitBtn" class="material-fs-button danger" type="button">SAIR</button>
+        </div>
+      </header>
+
+      <section class="material-fs-section">
+        <div class="material-fs-section-heading">
+          <div>
+            <h2>Peças disponíveis para representar</h2>
+            <p>Use os botões + e −. As peças foram ampliadas para facilitar a leitura e a manipulação.</p>
+          </div>
+
+          <div class="material-fs-target">
+            <span>Número a representar</span>
+            <strong>${board.dividend}</strong>
+          </div>
+        </div>
+
+        <div class="premium-representation-grid">
+          ${[
+            ["M","MILHAR","1000"],
+            ["C","CENTENA","100"],
+            ["D","DEZENA","10"],
+            ["U","UNIDADE","1"]
+          ].map(([key,label,value]) => `
+            <article class="premium-piece-card">
+              <header>
+                <strong>${label}</strong>
+                <span>vale ${value}</span>
+              </header>
+
+              <div class="premium-art-stage">
+                <div class="premium-art-items">
+                  ${premiumPieceMarkup(key,board.available[key])}
+                </div>
+              </div>
+
+              <div class="premium-count-controls">
+                <button type="button" data-fs-rep-minus="${key}" aria-label="Retirar ${label.toLowerCase()}">−</button>
+                <strong>${board.available[key]} peça(s)</strong>
+                <button type="button" data-fs-rep-plus="${key}" aria-label="Adicionar ${label.toLowerCase()}">+</button>
+              </div>
+            </article>
+          `).join("")}
+        </div>
+
+        <div class="material-fs-status ${correct ? "" : "is-pending"}">
+          <span>${correct ? "Representação pronta para confirmação." : "Monte o número e confirme quando terminar."}</span>
+        </div>
+
+        <div class="material-fs-footer-actions">
+          <button id="repResetBtn" class="material-fs-button" type="button">REFAZER REPRESENTAÇÃO</button>
+          <button id="repConfirmBtn" class="material-fs-button primary" type="button">✓ CONFIRMAR REPRESENTAÇÃO ?</button>
+          <button id="repBackExerciseBottomBtn" class="material-fs-button" type="button">VOLTAR AO EXERCÍCIO</button>
+          <button id="repExitBottomBtn" class="material-fs-button danger" type="button">SAIR</button>
+        </div>
+      </section>
+    </div>
+  `;
+
+  bindRepresentationFullscreenEvents(root);
+}
+
+function openRepresentationFullscreen(){
+  if(!state.materialBoard) return;
+
+  setMaterialFullscreenSnapshot("representation");
+  $("#materialRepresentationFullscreen")?.classList.remove("hidden");
+  document.body.classList.add("material-overlay-open");
+  renderRepresentationFullscreen();
+}
+
+function bindRepresentationFullscreenEvents(root){
+  const board = state.materialBoard;
+  if(!board) return;
+
+  root.querySelectorAll("[data-fs-rep-plus]").forEach(button => {
+    button.addEventListener("click",() => {
+      const key = button.dataset.fsRepPlus;
+      board.available[key] += 1;
+      board.confirmed = false;
+      board.phase = 1;
+      board.solved = false;
+      recordMaterialMovement("adicionar peça na representação",{piece:key});
+      renderRepresentationFullscreen();
+    });
+  });
+
+  root.querySelectorAll("[data-fs-rep-minus]").forEach(button => {
+    button.addEventListener("click",() => {
+      const key = button.dataset.fsRepMinus;
+      board.available[key] = Math.max(0,board.available[key] - 1);
+      board.confirmed = false;
+      board.phase = 1;
+      board.solved = false;
+      recordMaterialMovement("retirar peça da representação",{piece:key});
+      renderRepresentationFullscreen();
+    });
+  });
+
+  $("#repResetBtn")?.addEventListener("click",() => {
+    board.available = {M:0,C:0,D:0,U:0};
+    board.confirmed = false;
+    board.phase = 1;
+    board.solved = false;
+    recordMaterialMovement("refazer representação");
+    renderRepresentationFullscreen();
+  });
+
+  $("#repConfirmBtn")?.addEventListener("click",() => {
+    const represented = materialCountsValue(board.available);
+
+    if(represented !== board.dividend){
+      return toast(`A representação vale ${represented}. Monte exatamente ${board.dividend}.`,"error");
+    }
+
+    board.confirmed = true;
+    board.phase = Math.max(2,board.phase);
+    board.solved = false;
+    recordMaterialMovement("confirmar representação",{value:represented});
+    saveMaterialProgress("representação confirmada");
+
+    $("#materialRepresentationFullscreen")?.classList.add("hidden");
+    clearMaterialFullscreenState();
+    document.body.classList.remove("material-overlay-open");
+    renderMaterialLab();
+    toast("Representação correta. Agora faça trocas e distribua as peças.","success");
+  });
+
+  const backToExercise = () => {
+    saveMaterialProgress("voltar ao exercício pela representação");
+    hideMaterialFullscreenOverlays();
+    clearMaterialFullscreenState();
+    showScreen("screenStudentActivity");
+    autoGrowScratchField();
+  };
+
+  $("#repBackExerciseBtn")?.addEventListener("click",backToExercise);
+  $("#repBackExerciseBottomBtn")?.addEventListener("click",backToExercise);
+
+  $("#repExitBtn")?.addEventListener("click",() => openMaterialExitDialog("representation"));
+  $("#repExitBottomBtn")?.addEventListener("click",() => openMaterialExitDialog("representation"));
+}
+
+function renderMaterialLab(){
+  const board = state.materialBoard;
+  const root = $("#materialLabRoot");
+  if(!board || !root) return;
+
+  const quotient = board.dividend / board.divisor;
+  const layout = materialGroupLayout(board.groups.length);
+
+  root.innerHTML = `
+    <div class="material-lab-steps">
+      <button id="openRepresentationStepBtn"
+              class="material-lab-step material-lab-step-button ${board.confirmed ? "done" : "active"}"
+              type="button">
+        <span>1</span>
+        <strong>Representar</strong>
+      </button>
+
+      ${[
+        ["2","Trocar"],
+        ["3","Distribuir"],
+        ["4","Conferir"]
+      ].map(([number,label],index) => {
+        const step = index + 2;
+        const status = board.solved ? "done" : step < board.phase ? "done" : step === board.phase ? "active" : "";
+        return `
+          <div class="material-lab-step ${status}">
+            <span>${number}</span>
+            <strong>${label}</strong>
+          </div>
+        `;
+      }).join("")}
+    </div>
+
+    <section class="material-stage material-launch-stage">
+      <div class="material-launch-copy">
+        <div class="material-stage-heading compact">
+          <div>
+            <span class="stage-number">1</span>
+            <div>
+              <h2>Representação do dividendo</h2>
+              <p>Abra a representação em tela cheia para montar ${board.dividend} com Material Dourado.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="material-launch-summary">
+          <span>Dividendo: ${board.dividend}</span>
+          <span>Divisor: ${board.divisor}</span>
+          <span>${board.confirmed ? "Representação confirmada" : "Representação pendente"}</span>
+        </div>
+      </div>
+
+      <button id="openRepresentationFullscreenBtn" class="btn btn-primary" type="button">
+        ${board.confirmed ? "REVISAR REPRESENTAÇÃO EM TELA CHEIA" : "REPRESENTAR EM TELA CHEIA"}
+      </button>
+    </section>
+
+    ${board.confirmed ? `
+      <div class="material-fullscreen-launch">
+        <button id="openMaterialWorkspaceFullscreenBtn" class="btn btn-primary" type="button">
+          REALIZAR TROCAS E DISTRIBUIÇÃO NOS GRUPOS EM TELA CHEIA
+        </button>
+      </div>
+
+      <section class="material-workspace-grid">
+        <aside class="material-stage material-exchange-stage">
+          <div class="material-stage-heading compact">
+            <div>
+              <span class="stage-number">2</span>
+              <div>
+                <h2>Trocas</h2>
+                <p>Faça trocas sem alterar o valor representado.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="exchange-lines">
+            <button type="button" class="exchange-line" data-md-exchange="M-C">
+              <strong>1 milhar → 10 centenas</strong>
+              <small>Transforme uma peça de milhar em centenas.</small>
+            </button>
+
+            <button type="button" class="exchange-line" data-md-exchange="C-D">
+              <strong>1 centena → 10 dezenas</strong>
+              <small>Transforme uma peça de centena em dezenas.</small>
+            </button>
+
+            <button type="button" class="exchange-line" data-md-exchange="D-U">
+              <strong>1 dezena → 10 unidades</strong>
+              <small>Transforme uma peça de dezena em unidades.</small>
+            </button>
+
+            <button type="button" class="exchange-line" data-md-exchange="U-D">
+              <strong>10 unidades → 1 dezena</strong>
+              <small>Reagrupe dez unidades em uma dezena.</small>
+            </button>
+          </div>
+
+          <div class="material-pool-card">
+            <div class="material-pool-heading">
+              <div>
+                <strong>Peças disponíveis</strong>
+                <small>
+                  Arraste uma peça até um grupo ou clique com o botão direito
+                  em uma peça para escolher o grupo de destino.
+                </small>
+              </div>
+              <span>${materialCountsValue(board.available)}</span>
+            </div>
+
+            <div class="material-pool-pieces">
+              ${renderPieceVisuals(board.available,"pool")}
+            </div>
+          </div>
+        </aside>
+
+        <section class="material-stage material-distribution-stage">
+          <div class="material-stage-heading compact">
+            <div>
+              <span class="stage-number">3</span>
+              <div>
+                <h2>Distribua entre ${board.divisor} grupos</h2>
+                <p>Organize os grupos em partes iguais. A área usa toda a largura disponível.</p>
+              </div>
+            </div>
+
+            <div class="divisor-chip">
+              <span>DIVISOR</span>
+              <strong>${board.divisor}</strong>
+            </div>
+          </div>
+
+          <div class="material-groups-scroll">
+            <div class="material-groups-grid"
+                 style="--md-group-columns:${layout.columns}; min-width:${layout.columns * 286 + Math.max(0,layout.columns - 1) * 14}px;">
+              ${board.groups.map((group,index) => `
+                <article class="material-group-white" data-material-group="${index}">
+                  <header>
+                    <div>
+                      <strong>Grupo ${index+1}</strong>
+                      <span>Valor: ${materialCountsValue(group)}</span>
+                    </div>
+                    <small>M:${group.M} • C:${group.C} • D:${group.D} • U:${group.U}</small>
+                  </header>
+
+                  <div class="material-group-pieces">
+                    ${renderPieceVisuals(group,"group",index)}
+                  </div>
+
+                  <div class="material-group-drop-note">
+                    Arraste peças até aqui. Para devolver, clique em uma peça dentro do grupo.
+                  </div>
+                </article>
+              `).join("")}
+            </div>
+          </div>
+
+          <div class="material-stage-actions material-bottom-actions">
+            <button id="checkMaterialDistributionBtn" class="btn btn-primary" type="button">✓ CONFERIR O RESULTADO</button>
+            <button id="collectMaterialPiecesBtn" class="btn btn-outline" type="button">↺ Recolher todas as peças</button>
+            <button id="restartMaterialLabBtn" class="btn btn-outline" type="button">Refazer tudo</button>
+            <button id="backToExerciseFromGroupsBtn" class="btn btn-outline" type="button">VOLTAR AO EXERCÍCIO</button>
+          </div>
+
+          <div id="materialDistributionFeedback" class="material-message">
+            ${board.solved
+              ? `<strong>Parabéns!</strong> Você distribuiu as peças igualmente.`
+              : `Distribua as peças entre os grupos e use a conferência para revisar sua estratégia.`}
+          </div>
+
+          ${board.solved ? `
+            <div class="material-solved-panel">
+              <div>
+                <span>RESULTADO</span>
+                <strong>${board.dividend} ÷ ${board.divisor} = ${quotient}</strong>
+              </div>
+              <button id="useMaterialResultBtn" class="btn btn-success" type="button">USAR RESULTADO NO EXERCÍCIO</button>
+            </div>
+          ` : ""}
+        </section>
+      </section>
+    ` : ""}
+  `;
+
+  bindMaterialControls(root,"normal");
+}
+
+function renderMaterialWorkspaceFullscreen(){
+  const board = state.materialBoard;
+  const root = $("#materialWorkspaceFullscreenRoot");
+  if(!board || !root) return;
+
+  const layout = materialGroupLayout(board.groups.length);
+  const quotient = board.dividend / board.divisor;
+
+  root.innerHTML = `
+    <div class="material-fs-shell">
+      <header class="material-fs-header">
+        <div class="material-fs-title">
+          <span class="kicker">MATERIAL DOURADO — TELA AMPLIADA</span>
+          <h1>Trocas e distribuição nos grupos</h1>
+          <p>Faça as trocas, escolha a quantidade e distribua as peças com mais espaço visual.</p>
+        </div>
+
+        <div class="material-fs-header-actions">
+          <div class="material-fs-chip">
+            <span>DIVIDENDO</span>
+            <strong>${board.dividend}</strong>
+          </div>
+          <div class="material-fs-chip">
+            <span>DIVISOR</span>
+            <strong>${board.divisor}</strong>
+          </div>
+          <button id="workspaceBackNormalBtn" class="material-fs-button" type="button">VOLTAR À TELA NORMAL</button>
+          <button id="workspaceBackExerciseTopBtn" class="material-fs-button" type="button">VOLTAR AO EXERCÍCIO</button>
+          <button id="workspaceExitBtn" class="material-fs-button danger" type="button">SAIR</button>
+        </div>
+      </header>
+
+      <div class="material-fs-workspace">
+        <aside class="material-fs-exchanges">
+          <div class="material-fs-panel-title">
+            <div>
+              <h2>2. Trocas</h2>
+              <p>Faça trocas sem alterar o valor representado.</p>
+            </div>
+          </div>
+
+          <div class="premium-exchange-list">
+            ${[
+              ["M-C","1 milhar","10 centenas","Transforme uma peça de milhar em centenas."],
+              ["C-D","1 centena","10 dezenas","Transforme uma peça de centena em dezenas."],
+              ["D-U","1 dezena","10 unidades","Transforme uma peça de dezena em unidades."],
+              ["U-D","10 unidades","1 dezena","Reagrupe dez unidades em uma dezena."]
+            ].map(([action,from,to,desc]) => `
+              <button type="button" class="premium-exchange-button" data-md-exchange="${action}">
+                <div>
+                  <strong>${from}</strong>
+                  <small>${desc}</small>
+                </div>
+                <span class="arrow">→</span>
+                <strong>${to}</strong>
+              </button>
+            `).join("")}
+          </div>
+
+          <div class="material-fs-pool">
+            <div class="material-pool-heading">
+              <div>
+                <strong>Peças disponíveis</strong>
+                <small>
+                  Selecione a quantidade para envio rápido. Arraste as peças
+                  ou use o botão direito para escolher o grupo.
+                </small>
+              </div>
+              <span>${materialCountsValue(board.available)}</span>
+            </div>
+
+            <div class="material-pool-pieces">
+              ${renderPieceVisuals(board.available,"pool")}
+            </div>
+          </div>
+        </aside>
+
+        <section class="material-fs-groups-panel">
+          <div class="material-fs-panel-title">
+            <div>
+              <h2>3. Distribua entre ${board.divisor} grupos</h2>
+              <p>Os cartões se ajustam ao número de grupos e preservam a legibilidade.</p>
+            </div>
+          </div>
+
+          <div class="material-fs-groups-scroll">
+            <div class="material-fs-groups-grid"
+                 style="--md-group-columns:${layout.columns}; min-width:${layout.columns * 257 + Math.max(0,layout.columns - 1) * 12}px;">
+              ${board.groups.map((group,index) => `
+                <article class="material-group-white" data-material-group="${index}">
+                  <header>
+                    <div>
+                      <strong>Grupo ${index+1}</strong>
+                      <span>Valor: ${materialCountsValue(group)}</span>
+                    </div>
+                    <small>M:${group.M} • C:${group.C} • D:${group.D} • U:${group.U}</small>
+                  </header>
+
+                  <div class="material-group-pieces">
+                    ${renderPieceVisuals(group,"group",index)}
+                  </div>
+
+                  <div class="material-group-drop-note">
+                    Arraste as peças até aqui. Clique em uma peça do grupo para devolvê-la.
+                  </div>
+                </article>
+              `).join("")}
+            </div>
+          </div>
+
+          <div class="material-fs-controls">
+            <button id="fsCheckMaterialDistributionBtn" class="material-fs-button primary" type="button">✓ CONFERIR O RESULTADO</button>
+            <button id="fsCollectMaterialPiecesBtn" class="material-fs-button" type="button">↺ RECOLHER TODAS AS PEÇAS</button>
+            <button id="fsRestartMaterialLabBtn" class="material-fs-button" type="button">REFAZER TUDO</button>
+            <button id="workspaceBackExerciseBottomBtn" class="material-fs-button gold" type="button">VOLTAR AO EXERCÍCIO</button>
+          </div>
+
+          <div id="fsMaterialDistributionFeedback" class="material-fs-feedback">
+            ${board.solved
+              ? `<strong>Parabéns!</strong> A distribuição foi conferida.`
+              : `Distribua as peças entre os grupos e use a conferência para revisar sua estratégia.`}
+          </div>
+
+          ${board.solved ? `
+            <div class="material-fs-result">
+              <div>
+                <span>RESULTADO</span>
+                <strong>${board.dividend} ÷ ${board.divisor} = ${quotient}</strong>
+              </div>
+              <button id="fsUseMaterialResultBtn" class="material-fs-button primary" type="button">USAR RESULTADO NO EXERCÍCIO</button>
+            </div>
+          ` : ""}
+        </section>
+      </div>
+    </div>
+  `;
+
+  bindMaterialControls(root,"fullscreen");
+}
+
+function openMaterialWorkspaceFullscreen(){
+  const board = state.materialBoard;
+  if(!board?.confirmed) return;
+
+  setMaterialFullscreenSnapshot("workspace");
+  $("#materialWorkspaceFullscreen")?.classList.remove("hidden");
+  document.body.classList.add("material-overlay-open");
+  renderMaterialWorkspaceFullscreen();
+}
+
+function refreshMaterialViews(){
+  renderMaterialLab();
+
+  if(state.materialFullscreenMode === "representation"){
+    renderRepresentationFullscreen();
+  }else if(state.materialFullscreenMode === "workspace"){
+    renderMaterialWorkspaceFullscreen();
+  }
+}
+
+function bindMaterialControls(root,mode="normal"){
+  const board = state.materialBoard;
+  if(!board || !root) return;
+
+  root.querySelector("#openRepresentationStepBtn")?.addEventListener("click",openRepresentationFullscreen);
+  root.querySelector("#openRepresentationFullscreenBtn")?.addEventListener("click",openRepresentationFullscreen);
+  root.querySelector("#openMaterialWorkspaceFullscreenBtn")?.addEventListener("click",openMaterialWorkspaceFullscreen);
+
+  root.querySelectorAll("[data-md-batch-plus]").forEach(button => {
+    button.addEventListener("click",() => {
+      const key = button.dataset.mdBatchPlus;
+      const max = Math.max(1,board.available[key] || 1);
+      board.batchQuantity[key] = Math.min(max,(board.batchQuantity[key] || 1) + 1);
+      recordMaterialMovement("alterar quantidade de envio",{piece:key,quantity:board.batchQuantity[key]});
+      refreshMaterialViews();
+    });
+  });
+
+  root.querySelectorAll("[data-md-batch-minus]").forEach(button => {
+    button.addEventListener("click",() => {
+      const key = button.dataset.mdBatchMinus;
+      board.batchQuantity[key] = Math.max(1,(board.batchQuantity[key] || 1) - 1);
+      recordMaterialMovement("alterar quantidade de envio",{piece:key,quantity:board.batchQuantity[key]});
+      refreshMaterialViews();
+    });
+  });
+
+  root.querySelectorAll("[data-md-exchange]").forEach(button => {
+    button.addEventListener("click",() => applyMaterialExchange(button.dataset.mdExchange));
+  });
+
+  root.querySelectorAll("[data-return-piece]").forEach(button => {
+    button.addEventListener("click",() => {
+      returnMaterialPieceToPool(button.dataset.returnPiece,Number(button.dataset.returnGroup));
+    });
+  });
+
+  root.querySelectorAll("[data-drag-piece]").forEach(piece => {
+    piece.addEventListener("dragstart",event => {
+      const key = piece.dataset.dragPiece;
+      const quantity = Math.max(
+        1,
+        Math.min(
+          Number(board.batchQuantity?.[key] || 1),
+          Number(board.available?.[key] || 1)
+        )
+      );
+
+      event.dataTransfer.setData("text/material-piece",key);
+      event.dataTransfer.setData("text/material-count",String(quantity));
+      event.dataTransfer.effectAllowed = "move";
+    });
+
+    piece.addEventListener("contextmenu",event => {
+      event.preventDefault();
+      state.materialContextSourceMode = mode;
+      openMaterialContextMenu(piece.dataset.pieceContext,event.clientX,event.clientY);
+    });
+  });
+
+  root.querySelectorAll("[data-md-pool-cluster]").forEach(cluster => {
+    cluster.addEventListener("contextmenu",event => {
+      event.preventDefault();
+      state.materialContextSourceMode = mode;
+      openMaterialContextMenu(cluster.dataset.mdPoolCluster,event.clientX,event.clientY);
+    });
+  });
+
+  root.querySelectorAll("[data-material-group]").forEach(group => {
+    group.addEventListener("dragover",event => {
+      event.preventDefault();
+      group.classList.add("is-dragover");
+    });
+
+    group.addEventListener("dragleave",() => group.classList.remove("is-dragover"));
+
+    group.addEventListener("drop",event => {
+      event.preventDefault();
+      group.classList.remove("is-dragover");
+
+      const key = event.dataTransfer.getData("text/material-piece");
+      const count = Number(event.dataTransfer.getData("text/material-count") || 1);
+      const index = Number(group.dataset.materialGroup);
+
+      if(key){
+        moveMaterialPieceToGroup(key,index,count);
+      }
+    });
+  });
+
+  root.querySelector("#collectMaterialPiecesBtn")?.addEventListener("click",collectAllMaterialPieces);
+  root.querySelector("#fsCollectMaterialPiecesBtn")?.addEventListener("click",collectAllMaterialPieces);
+
+  root.querySelector("#restartMaterialLabBtn")?.addEventListener("click",restartMaterialBoard);
+  root.querySelector("#fsRestartMaterialLabBtn")?.addEventListener("click",restartMaterialBoard);
+
+  root.querySelector("#checkMaterialDistributionBtn")?.addEventListener("click",checkMaterialDistribution);
+  root.querySelector("#fsCheckMaterialDistributionBtn")?.addEventListener("click",checkMaterialDistribution);
+
+  const backExercise = () => {
+    saveMaterialProgress("voltar ao exercício após distribuição");
+    hideMaterialFullscreenOverlays();
+    clearMaterialFullscreenState();
+    showScreen("screenStudentActivity");
+    autoGrowScratchField();
+  };
+
+  root.querySelector("#backToExerciseFromGroupsBtn")?.addEventListener("click",backExercise);
+  root.querySelector("#workspaceBackExerciseTopBtn")?.addEventListener("click",backExercise);
+  root.querySelector("#workspaceBackExerciseBottomBtn")?.addEventListener("click",backExercise);
+
+  root.querySelector("#workspaceBackNormalBtn")?.addEventListener("click",() => {
+    saveMaterialProgress("retorno à visualização normal");
+    $("#materialWorkspaceFullscreen")?.classList.add("hidden");
+    clearMaterialFullscreenState();
+    document.body.classList.remove("material-overlay-open");
+    renderMaterialLab();
+  });
+
+  root.querySelector("#workspaceExitBtn")?.addEventListener("click",() => openMaterialExitDialog("workspace"));
+
+  root.querySelector("#useMaterialResultBtn")?.addEventListener("click",useMaterialResultInExercise);
+  root.querySelector("#fsUseMaterialResultBtn")?.addEventListener("click",useMaterialResultInExercise);
+}
+
+function applyMaterialExchange(action){
+  const board = state.materialBoard;
+  if(!board) return;
+
+  const pool = board.available;
+  let valid = true;
+  let description = action;
+
+  if(action === "M-C" && pool.M >= 1){
+    pool.M -= 1;
+    pool.C += 10;
+    description = "1 milhar → 10 centenas";
+  }else if(action === "C-D" && pool.C >= 1){
+    pool.C -= 1;
+    pool.D += 10;
+    description = "1 centena → 10 dezenas";
+  }else if(action === "D-U" && pool.D >= 1){
+    pool.D -= 1;
+    pool.U += 10;
+    description = "1 dezena → 10 unidades";
+  }else if(action === "U-D" && pool.U >= 10){
+    pool.U -= 10;
+    pool.D += 1;
+    description = "10 unidades → 1 dezena";
+  }else{
+    valid = false;
+  }
+
+  if(!valid){
+    return toast("Não há peças suficientes para realizar essa troca.","error");
+  }
+
+  board.phase = Math.max(board.phase,2);
+  board.solved = false;
+  recordMaterialMovement("troca",{exchange:description});
+  refreshMaterialViews();
+}
+
+function moveMaterialPieceToGroup(key,index,count=1){
+  const board = state.materialBoard;
+  if(!board || !board.confirmed) return;
+  if(!["M","C","D","U"].includes(key)) return;
+  if(!board.groups[index]) return;
+
+  const amount = Math.max(1,Math.min(Number(count) || 1,board.available[key] || 0));
+
+  if(amount <= 0){
+    return toast(`Não há ${pieceLabel(key).toLowerCase()} disponível.`,"error");
+  }
+
+  board.available[key] -= amount;
+  board.groups[index][key] += amount;
+  board.phase = Math.max(board.phase,3);
+  board.solved = false;
+
+  recordMaterialMovement("enviar peça ao grupo",{
+    piece:key,
+    quantity:amount,
+    group:index+1
+  });
+
+  refreshMaterialViews();
+}
+
+function returnMaterialPieceToPool(key,index){
+  const board = state.materialBoard;
+  if(!board || !board.groups[index]) return;
+  if(board.groups[index][key] <= 0) return;
+
+  board.groups[index][key] -= 1;
+  board.available[key] += 1;
+  board.solved = false;
+
+  recordMaterialMovement("devolver peça ao conjunto disponível",{
+    piece:key,
+    quantity:1,
+    group:index+1
+  });
+
+  refreshMaterialViews();
+}
+
+function collectAllMaterialPieces(){
+  const board = state.materialBoard;
+  if(!board) return;
+
+  board.groups.forEach(group => {
+    ["M","C","D","U"].forEach(key => {
+      board.available[key] += group[key];
+      group[key] = 0;
+    });
+  });
+
+  board.phase = 2;
+  board.solved = false;
+  recordMaterialMovement("recolher todas as peças");
+  refreshMaterialViews();
+}
+
+function restartMaterialBoard(){
+  const board = state.materialBoard;
+  if(!board) return;
+
+  const history = Array.isArray(board.history) ? board.history.slice(-249) : [];
+  const fresh = createMaterialBoard(board.dividend,board.divisor);
+  fresh.history = history;
+  state.materialBoard = fresh;
+
+  recordMaterialMovement("refazer tudo");
+  refreshMaterialViews();
+}
+
+function checkMaterialDistribution(){
+  const board = state.materialBoard;
+  if(!board) return;
+
+  const quotient = board.dividend / board.divisor;
+  const poolValue = materialCountsValue(board.available);
+  const values = board.groups.map(materialCountsValue);
+  const allEqual = values.every(value => value === quotient);
+  const correctTotal = materialTotalValue(board) === board.dividend;
+
+  if(Number.isInteger(quotient) && poolValue === 0 && allEqual && correctTotal){
+    board.phase = 4;
+    board.solved = true;
+    recordMaterialMovement("conferir distribuição",{result:"correta"});
+    saveMaterialProgress("distribuição correta");
+    refreshMaterialViews();
+    toast("Distribuição correta. Parabéns!","success");
+    return;
+  }
+
+  board.solved = false;
+  recordMaterialMovement("conferir distribuição",{
+    result:"revisar",
+    remainingPool:poolValue
+  });
+
+  const normalFeedback = $("#materialDistributionFeedback");
+  const fsFeedback = $("#fsMaterialDistributionFeedback");
+
+  let message = "A distribuição ainda precisa ser ajustada.";
+
+  if(!Number.isInteger(quotient)){
+    message = "Continue usando as peças para representar sua estratégia. Esta atividade poderá ser revisada posteriormente pelo professor.";
+  }else if(poolValue > 0){
+    message = "Ainda existem peças fora dos grupos. Continue distribuindo até usar todas elas.";
+  }else{
+    message = "Os grupos ainda não têm o mesmo valor. Revise a distribuição ou faça novas trocas.";
+  }
+
+  if(normalFeedback) normalFeedback.textContent = message;
+  if(fsFeedback) fsFeedback.textContent = message;
+
+  if(!state.materialFullscreenMode){
+    saveMaterialProgress("conferência da distribuição");
+  }
+
+  toast("Revise a distribuição.","info");
+}
+
+function useMaterialResultInExercise(){
+  const board = state.materialBoard;
+  if(!board) return;
+
+  const quotient = board.dividend / board.divisor;
+  saveMaterialProgress("resultado levado ao exercício");
+
+  hideMaterialFullscreenOverlays();
+  clearMaterialFullscreenState();
+  showScreen("screenStudentActivity");
+
+  const answerInput = $("#studentFinalAnswer");
+  if(answerInput){
+    answerInput.value = String(quotient);
+    answerInput.focus();
+  }
+
+  autoGrowScratchField();
+  toast("Resultado transferido para a resposta final. Revise e envie.","success");
+}
+
+function openMaterialExitDialog(source){
+  state.materialExitSource = source || state.materialFullscreenMode || "workspace";
+  $("#materialExitModal")?.classList.remove("hidden");
+}
+
+function materialExitWithoutSave(){
+  const snapshot = state.materialFullscreenSnapshot;
+
+  if(snapshot){
+    state.materialBoard = normalizeMaterialBoard(
+      snapshot,
+      snapshot.dividend,
+      snapshot.divisor
+    );
+  }
+
+  hideMaterialFullscreenOverlays();
+  clearMaterialFullscreenState();
+  renderMaterialLab();
+  showScreen("screenStudentActivity");
+  autoGrowScratchField();
+  toast("As alterações desta tela não foram salvas.","info");
+}
+
+function materialExitWithSave(){
+  saveMaterialProgress("saída com progresso salvo");
+  hideMaterialFullscreenOverlays();
+  clearMaterialFullscreenState();
+  renderMaterialLab();
+  showScreen("screenStudentActivity");
+  autoGrowScratchField();
+  toast("Progresso do Material Dourado salvo.","success");
+}
+
+/* Atualiza o menu de contexto para respeitar o modo atual. */
+function openMaterialContextMenu(key,x,y){
+  const board = state.materialBoard;
+  if(!board || !board.confirmed) return;
+  if((board.available[key] || 0) <= 0) return;
+
+  const menu = ensureMaterialContextMenu();
+  const qty = Math.max(1,Math.min(board.batchQuantity[key] || 1,board.available[key] || 1));
+  const contextCols = Math.max(1,Math.ceil(board.groups.length / 2));
+
+  menu.innerHTML = `
+    <div class="material-context-title">
+      Enviar <strong>${qty}</strong> peça(s) de ${pieceLabel(key).toLowerCase()} para:
+    </div>
+
+    <div class="material-context-options" style="--context-cols:${contextCols}">
+      ${board.groups.map((group,index) => `
+        <button type="button"
+                data-context-send="${key}"
+                data-context-group="${index}"
+                data-context-qty="${qty}">
+          Grupo ${index+1}
+        </button>
+      `).join("")}
+    </div>
+  `;
+
+  menu.style.left = `${Math.max(8,Math.min(x,window.innerWidth - Math.min(920,window.innerWidth * .92)))}px`;
+  menu.style.top = `${Math.max(8,Math.min(y,window.innerHeight - 330))}px`;
+  menu.classList.remove("hidden");
+
+  menu.querySelectorAll("[data-context-send]").forEach(button => {
+    button.addEventListener("click",event => {
+      event.stopPropagation();
+      moveMaterialPieceToGroup(
+        button.dataset.contextSend,
+        Number(button.dataset.contextGroup),
+        Number(button.dataset.contextQty)
+      );
+      menu.classList.add("hidden");
+    });
+  });
+}
+
+/* ============================================================
+   RASCUNHO — crescimento automático
+   ============================================================ */
+function autoGrowScratchField(){
+  const field = $("#studentScratch");
+  if(!field) return;
+
+  field.style.height = "auto";
+  field.style.height = `${Math.max(190,field.scrollHeight + 4)}px`;
+}
+
+function setupProtectedScratchField(){
+  const field = $("#studentScratch");
+  if(!field) return;
+
+  if(field.dataset.protectionBound !== "1"){
+    field.dataset.protectionBound = "1";
+
+    field.addEventListener("keydown",event => {
+      const key = String(event.key || "").toLowerCase();
+
+      if((event.ctrlKey || event.metaKey) && ["c","v","x"].includes(key)){
+        blockScratchAction(event);
+      }
+    });
+
+    ["copy","paste","cut","contextmenu","drop","dragstart"].forEach(eventName => {
+      field.addEventListener(eventName,event => blockScratchAction(event));
+    });
+
+    field.addEventListener("dragover",event => {
+      event.preventDefault();
+      if(event.dataTransfer) event.dataTransfer.dropEffect = "none";
+    });
+
+    field.addEventListener("beforeinput",event => {
+      if(["insertFromPaste","insertFromDrop","deleteByCut"].includes(event.inputType)){
+        blockScratchAction(event);
+      }
+    });
+
+    field.addEventListener("input",autoGrowScratchField);
+  }
+
+  autoGrowScratchField();
+}
+
+function renderStudentAnswerArea(submission){
+  const area = $("#studentAnswerArea");
+
+  area.innerHTML = `
+    <div class="answer-actions">
+      <label>
+        Resposta final
+        <input id="studentFinalAnswer" type="text" placeholder="Digite sua resposta">
+      </label>
+
+      <button id="submitStudentAnswerBtn" class="btn btn-primary" type="button">
+        ENVIAR RESPOSTA
+      </button>
+    </div>
+  `;
+
+  $("#studentFinalAnswer").value = submission.finalAnswer || "";
+  $("#submitStudentAnswerBtn").addEventListener("click",submitStudentAnswer);
+  autoGrowScratchField();
+}
+
+/* Salva também o estado do Material Dourado ao salvar o exercício. */
+function saveCurrentProgress(){
+  if(!state.student || !state.currentActivity) return;
+
+  const data = loadData();
+  const submission = data.submissions.find(s =>
+    s.studentId === state.student.id &&
+    s.activityId === state.currentActivity.id
+  );
+
+  if(!submission) return;
+
+  submission.activeSeconds = state.activeSeconds;
+  submission.scratch = $("#studentScratch")?.value || submission.scratch || "";
+  submission.finalAnswer = $("#studentFinalAnswer")?.value || submission.finalAnswer || "";
+  submission.updatedAt = new Date().toISOString();
+
+  if(state.materialBoard){
+    submission.materialProgress = {
+      board:serializeMaterialBoard(state.materialBoard),
+      savedAt:new Date().toISOString(),
+      reason:"salvamento do exercício"
+    };
+  }
+
+  const student = data.students.find(s => s.id === state.student.id);
+  if(student) student.lastAccess = new Date().toISOString();
+
+  saveData(data);
+}
+
+/* Ligações dos novos controles globais. */
+document.addEventListener("DOMContentLoaded",() => {
+  $("#materialExitWithoutSaveBtn")?.addEventListener("click",materialExitWithoutSave);
+  $("#materialExitSaveBtn")?.addEventListener("click",materialExitWithSave);
+  $("#materialExitCancelBtn")?.addEventListener("click",() => {
+    $("#materialExitModal")?.classList.add("hidden");
+  });
+
+  // O botão Voltar ao exercício do cabeçalho do laboratório também salva.
+  const backButton = $("#backFromMaterialBtn");
+  if(backButton){
+    backButton.replaceWith(backButton.cloneNode(true));
+    $("#backFromMaterialBtn")?.addEventListener("click",closeMaterialLab);
+  }
+});

@@ -6,12 +6,12 @@
   <meta name="theme-color" content="#06101d">
   <title>Projeto Educacional 2.0</title>
 
-  <link rel="stylesheet" href="style.css?v=7.0-material-layout-final">
+  <link rel="stylesheet" href="style.css?v=7.0-material-fullscreen-verified-20261014">
 
   <!-- Leitura local de planilhas XLS/XLSX e documentos DOCX -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/mammoth@1.13.0/mammoth.browser.min.js" defer></script>
-  <script src="script.js?v=7.0-material-layout-final" defer></script>
+  <script src="script.js?v=7.0-material-fullscreen-verified-20261014" defer></script>
 </head>
 
 <body>
@@ -528,7 +528,7 @@
                   </label>
 
                   <button id="downloadReportBtn" class="btn btn-primary" type="button">
-                    Baixar relatório
+                    Baixar relatório (.xlsx)
                   </button>
                 </div>
               </div>
@@ -663,13 +663,18 @@
 
           <div id="interactiveArea"></div>
 
-          <div class="answer-panel panel-card">
-            <label>
+          <div class="answer-panel panel-card answer-panel-split">
+            <label class="scratch-column">
               Rascunho
-              <textarea id="studentScratch" rows="5" placeholder="Registre aqui sua estratégia, cálculo ou reflexão..."></textarea>
+              <textarea id="studentScratch" rows="5" autocomplete="off" spellcheck="true"
+                placeholder="Registre aqui sua estratégia, cálculo ou reflexão..."></textarea>
+              <small class="scratch-protection-note">
+                Digitação manual protegida: copiar, colar, recortar, botão direito e arrastar/soltar estão bloqueados.
+                O sistema registra versões do rascunho ao longo da atividade.
+              </small>
             </label>
 
-            <div id="studentAnswerArea"></div>
+            <div id="studentAnswerArea" class="final-answer-column"></div>
             <div id="studentAnswerFeedback" class="feedback-box hidden"></div>
           </div>
         </div>
@@ -703,6 +708,25 @@
           <div id="materialLabRoot"></div>
         </div>
       </section>
+
+      <!-- =====================================================
+           MATERIAL DOURADO — AMBIENTES EM TELA CHEIA
+      ====================================================== -->
+      <div id="materialRepresentationFullscreen"
+           class="material-fullscreen-overlay hidden"
+           role="dialog"
+           aria-modal="true"
+           aria-label="Representação com Material Dourado em tela cheia">
+        <div id="materialRepresentationFullscreenRoot" class="material-fullscreen-root"></div>
+      </div>
+
+      <div id="materialWorkspaceFullscreen"
+           class="material-fullscreen-overlay hidden"
+           role="dialog"
+           aria-modal="true"
+           aria-label="Trocas e distribuição com Material Dourado em tela cheia">
+        <div id="materialWorkspaceFullscreenRoot" class="material-fullscreen-root"></div>
+      </div>
 
     </main>
 
@@ -791,6 +815,32 @@
         </div>
 
         <div id="studentDetailsBody"></div>
+      </div>
+    </div>
+
+
+    <div id="materialExitModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="materialExitTitle">
+      <div class="modal-card material-exit-card">
+        <span class="eyebrow">MATERIAL DOURADO</span>
+        <h2 id="materialExitTitle">Deseja sair desta etapa?</h2>
+        <p>
+          Escolha se as movimentações realizadas desde que esta tela foi aberta
+          devem ser descartadas ou salvas como progresso da atividade.
+        </p>
+
+        <div class="material-exit-actions">
+          <button id="materialExitWithoutSaveBtn" class="btn btn-danger-soft" type="button">
+            SAIR SEM SALVAR
+          </button>
+
+          <button id="materialExitSaveBtn" class="btn btn-primary" type="button">
+            SAIR E SALVAR O PROGRESSO
+          </button>
+
+          <button id="materialExitCancelBtn" class="btn btn-outline" type="button">
+            CANCELAR
+          </button>
+        </div>
       </div>
     </div>
 
